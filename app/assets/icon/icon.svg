@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#12222E"/>
+      <stop offset="100%" stop-color="#060A10"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+  <g stroke="#1F2A38" stroke-width="2">
+    <line x1="0" y1="256" x2="1024" y2="256"/>
+    <line x1="0" y1="512" x2="1024" y2="512"/>
+    <line x1="0" y1="768" x2="1024" y2="768"/>
+    <line x1="256" y1="0" x2="256" y2="1024"/>
+    <line x1="512" y1="0" x2="512" y2="1024"/>
+    <line x1="768" y1="0" x2="768" y2="1024"/>
+  </g>
+  <!-- cyan glow halo -->
+  <circle cx="512" cy="512" r="360" fill="none" stroke="#00E5FF" stroke-width="6" opacity="0.45" filter="url(#glow)"/>
+  <circle cx="512" cy="512" r="360" fill="none" stroke="#00E5FF" stroke-width="3" opacity="0.9"/>
+  <!-- Chess Knight silhouette, centered -->
+  <g transform="translate(512 540) scale(6.2) translate(-22 -22)" fill="#00E5FF" stroke="#00E5FF" stroke-linejoin="round" stroke-linecap="round" stroke-width="1.5">
+    <path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#00E5FF"/>
+    <path d="M24 18c0.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-0.94 1.41-3.04 0-3-1 0 0.19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-0.73-0.994-0.5-2-0.5-3 1-1 3 2.5 3 2.5h2s0.78-1.992 2.5-3c1 0 1 3 1 3"/>
+    <path d="M9.5 25.5a0.5 0.5 0 1 1-1 0 0.5 0.5 0 1 1 1 0z" fill="#060A10" stroke="#060A10"/>
+    <path d="M15 15.5a0.5 1.5 0 1 1-1 0 0.5 1.5 0 1 1 1 0z" fill="#060A10" stroke="#060A10" transform="matrix(0.866 0.5 -0.5 0.866 9.693 -5.173)"/>
+  </g>
+  <!-- LIVE dot and small HUD markers -->
+  <circle cx="140" cy="140" r="14" fill="#39FF8C"/>
+  <circle cx="140" cy="140" r="20" fill="none" stroke="#39FF8C" stroke-width="2" opacity="0.55"/>
+  <!-- corner brackets, top-right and bottom-left -->
+  <g stroke="#00E5FF" stroke-width="4" fill="none">
+    <polyline points="884,120 884,60 944,60"/>
+    <polyline points="140,964 140,904 200,904"/>
+  </g>
+</svg>

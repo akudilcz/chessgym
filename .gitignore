@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local agent/session state — machine-specific, never committed.
+.claude/
+pipeline/input/
+pipeline/output/
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/ios/Pods/
+app/android/.gradle/
+app/android/app/build/
+app/android/key.properties
+app_logic/.dart_tool/
+app_logic/.packages
+
+# Coverage output.
+coverage/
+.coverage/

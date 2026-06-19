@@ -1,0 +1,198 @@
+# Canonical theme taxonomy.
+# id: slug used throughout the system.
+# display: player-facing name.
+# description: one sentence the player sees on the theme node.
+# importance: [0,1] — node size in constellation.
+# prereqs: list of theme ids the player must reach mastery >= 0.5 in.
+# lichess_aliases: how this theme maps to Lichess CSV theme tags.
+
+themes:
+  # Famous positions — hand-curated historical gems (Saavedra, Immortal,
+  # etc) plus every Lichess puzzle drawn from master / master-vs-master
+  # games. Pipeline also auto-applies this theme when origin_kind='famous'.
+  - id: famous
+    display: "Famous positions"
+    description: "Master-level games and classical studies."
+    importance: 1.0
+    prereqs: []
+    lichess_aliases: [master, masterVsMaster]
+
+  # Roots — unlocked from day one.
+  - id: mateIn1
+    display: "Mate in 1"
+    description: "Find the single move that delivers checkmate."
+    importance: 1.0
+    prereqs: []
+    lichess_aliases: [mateIn1]
+
+  - id: fork
+    display: "Fork"
+    description: "Attack two pieces at once with a single move."
+    importance: 1.0
+    prereqs: []
+    lichess_aliases: [fork]
+
+  - id: pin
+    display: "Pin"
+    description: "A piece cannot move because a more valuable piece stands behind it."
+    importance: 0.9
+    prereqs: []
+    lichess_aliases: [pin]
+
+  - id: skewer
+    display: "Skewer"
+    description: "A more valuable piece is attacked first; when it moves, a lesser piece behind falls."
+    importance: 0.8
+    prereqs: []
+    lichess_aliases: [skewer]
+
+  - id: hangingPiece
+    display: "Hanging piece"
+    description: "Capture a piece that is undefended."
+    importance: 0.6
+    prereqs: []
+    lichess_aliases: [hangingPiece]
+
+  # Level 2 — require one root.
+  - id: mateIn2
+    display: "Mate in 2"
+    description: "Force checkmate within two moves."
+    importance: 1.0
+    prereqs: [mateIn1]
+    lichess_aliases: [mateIn2]
+
+  - id: discoveredAttack
+    display: "Discovered attack"
+    description: "Move one piece to unleash an attack from another."
+    importance: 0.8
+    prereqs: [pin]
+    lichess_aliases: [discoveredAttack]
+
+  - id: doubleCheck
+    display: "Double check"
+    description: "Two pieces check the king at once — the king must move."
+    importance: 0.7
+    prereqs: [discoveredAttack]
+    lichess_aliases: [doubleCheck]
+
+  - id: backRankMate
+    display: "Back-rank mate"
+    description: "Checkmate on the first or eighth rank with the king trapped by its own pawns."
+    importance: 0.9
+    prereqs: [mateIn1]
+    lichess_aliases: [backRankMate]
+
+  - id: smotheredMate
+    display: "Smothered mate"
+    description: "A knight delivers mate to a king surrounded by its own pieces."
+    importance: 0.7
+    prereqs: [mateIn2]
+    lichess_aliases: [smotheredMate]
+
+  - id: trappedPiece
+    display: "Trapped piece"
+    description: "A piece has no safe square to retreat to."
+    importance: 0.7
+    prereqs: [hangingPiece]
+    lichess_aliases: [trappedPiece]
+
+  - id: sacrifice
+    display: "Sacrifice"
+    description: "Give up material to achieve a bigger goal."
+    importance: 0.9
+    prereqs: [hangingPiece]
+    lichess_aliases: [sacrifice]
+
+  # Level 3.
+  - id: mateIn3
+    display: "Mate in 3"
+    description: "Force checkmate within three moves."
+    importance: 0.9
+    prereqs: [mateIn2]
+    lichess_aliases: [mateIn3]
+
+  - id: attraction
+    display: "Attraction"
+    description: "Lure an enemy piece onto a fatal square."
+    importance: 0.7
+    prereqs: [sacrifice]
+    lichess_aliases: [attraction]
+
+  - id: deflection
+    display: "Deflection"
+    description: "Force an enemy piece to abandon a key defensive duty."
+    importance: 0.7
+    prereqs: [sacrifice]
+    lichess_aliases: [deflection]
+
+  - id: interference
+    display: "Interference"
+    description: "Cut the line of defense between two enemy pieces."
+    importance: 0.6
+    prereqs: [deflection]
+    lichess_aliases: [interference]
+
+  - id: clearance
+    display: "Clearance"
+    description: "Vacate a square or line so another of your pieces can use it."
+    importance: 0.6
+    prereqs: [discoveredAttack]
+    lichess_aliases: [clearance]
+
+  - id: xRayAttack
+    display: "X-ray attack"
+    description: "An attack that passes through an intervening piece."
+    importance: 0.6
+    prereqs: [pin, skewer]
+    lichess_aliases: [xRayAttack]
+
+  # Endgame.
+  - id: endgame
+    display: "Endgame"
+    description: "Positions with few pieces — technique over tactics."
+    importance: 0.9
+    prereqs: [mateIn2]
+    lichess_aliases: [endgame]
+
+  - id: pawnEndgame
+    display: "Pawn endgame"
+    description: "Kings and pawns only."
+    importance: 0.8
+    prereqs: [endgame]
+    lichess_aliases: [pawnEndgame]
+
+  - id: rookEndgame
+    display: "Rook endgame"
+    description: "The most common endgame in practical play."
+    importance: 0.9
+    prereqs: [endgame]
+    lichess_aliases: [rookEndgame]
+
+  - id: zugzwang
+    display: "Zugzwang"
+    description: "Any move makes the position worse."
+    importance: 0.7
+    prereqs: [endgame]
+    lichess_aliases: [zugzwang]
+
+  - id: underpromotion
+    display: "Underpromotion"
+    description: "Promote to something other than a queen for a specific tactical reason."
+    importance: 0.8
+    prereqs: [pawnEndgame]
+    lichess_aliases: [underPromotion, underpromotion]
+
+  # Composition / aesthetic.
+  - id: quietMove
+    display: "Quiet move"
+    description: "A non-check, non-capture that wins."
+    importance: 0.8
+    prereqs: [sacrifice]
+    lichess_aliases: [quietMove]
+
+  - id: kingHunt
+    display: "King hunt"
+    description: "Drive the enemy king across the board with a series of forcing moves."
+    importance: 0.8
+    prereqs: [sacrifice, doubleCheck]
+    lichess_aliases: [kingsideAttack, queensideAttack]

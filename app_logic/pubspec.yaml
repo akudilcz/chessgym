@@ -1,0 +1,11 @@
+name: chesspuzzle_logic
+description: Pure-Dart logic for the chess puzzle app — rating, SR, selection. No Flutter dependency, testable with dart only.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^4.0.0

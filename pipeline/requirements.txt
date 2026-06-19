@@ -1,0 +1,10 @@
+# Python dependencies for the curation pipeline.
+#
+# Runtime libraries used by the pipeline stages and tests. The versions
+# below are the ones the pipeline has been tested against.
+
+chess==1.11.2          # python-chess: FEN/UCI parsing, legality, mate validation
+pyyaml==6.0.2          # taxonomy YAML loader
+
+# Test/dev runner.
+pytest==8.3.4

@@ -1,0 +1,55 @@
+name: chesspuzzle
+description: Curated chess puzzle trainer. Offline, no accounts, no telemetry.
+publish_to: none
+version: 0.2.0+2
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+  flutter: ">=3.41.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dartchess: ^0.12.3
+  chessground: ^7.0.0
+  sqflite: ^2.3.3
+  sqflite_common_ffi: ^2.3.3
+  fast_immutable_collections: ^11.0.0
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  flutter_riverpod: ^2.5.1
+  crypto: ^3.0.3
+  chesspuzzle_logic:
+    path: ../app_logic
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.0
+
+flutter_native_splash:
+  color: "#0A0E14"
+  image: "assets/icon/icon.png"
+  android: true
+  ios: true
+  android_12:
+    color: "#0A0E14"
+    image: "assets/icon/icon.png"
+
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: true
+  ios: true
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#0A0E14"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/puzzles/

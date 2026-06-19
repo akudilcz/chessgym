@@ -1,0 +1,156 @@
+Chess Gym
+Copyright (C) 2026 Andrew Kudilczak
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE for the full text.
+
+Chess Gym is licensed GPL-3.0 because it links dartchess and chessground, both
+of which are GPL-3.0. This is a requirement of those licenses, not a
+preference.
+
+This file records attribution for third-party work bundled with, linked by, or
+used to build Chess Gym. Licenses named below were read from each dependency's
+own LICENSE file at the resolved version, not from documentation.
+
+
+================================================================================
+PUZZLE DATA
+================================================================================
+
+Lichess puzzle database
+    https://database.lichess.org/#puzzles
+    CC0 1.0 Universal (public domain dedication)
+
+    The shipped corpus (app/assets/puzzles/puzzles.sqlite) is derived from the
+    open Lichess puzzle database. Puzzles are filtered, scored and stratified
+    by the pipeline in pipeline/; the puzzle positions and solution lines
+    originate with Lichess and its contributors.
+
+    CC0 imposes no attribution requirement. It is recorded here because the
+    work deserves credit regardless.
+
+
+================================================================================
+LINKED LIBRARIES (shipped inside the application)
+================================================================================
+
+dartchess 0.12.3 — GPL-3.0
+    https://pub.dev/packages/dartchess
+    Lichess. Move generation, legality checking, FEN and PGN handling.
+    Copyleft source of Chess Gym's own GPL-3.0 license.
+
+chessground 7.4.2 — GPL-3.0
+    https://pub.dev/packages/chessground
+    Lichess. Interactive board widget, animation and drag-to-move.
+    Copyleft source of Chess Gym's own GPL-3.0 license.
+
+sqflite 2.4.1 — BSD 2-Clause
+    https://pub.dev/packages/sqflite
+    Copyright (c) 2019, Alexandre Roux (Tekartik). SQLite plugin for Flutter.
+
+sqflite_common_ffi 2.3.4+4 — BSD 2-Clause
+    https://pub.dev/packages/sqflite_common_ffi
+    Copyright (c) 2019, Alexandre Roux (Tekartik). SQLite via FFI on desktop.
+
+fast_immutable_collections 11.2.0 — BSD 2-Clause
+    https://pub.dev/packages/fast_immutable_collections
+    Copyright 2020 Marcelo Glasberg and Philippe Fanaro.
+    Immutable IMap / ISet, required by chessground.
+
+flutter_riverpod 2.6.1 — MIT
+    https://pub.dev/packages/flutter_riverpod
+    Copyright (c) 2020 Remi Rousselet. State management.
+
+path_provider 2.1.6 — BSD 3-Clause
+    https://pub.dev/packages/path_provider
+    Copyright 2013 The Flutter Authors. Platform directory lookup.
+
+path 1.9.1 — BSD 3-Clause
+    https://pub.dev/packages/path
+    Copyright 2014, the Dart project authors. Path manipulation.
+
+crypto 3.0.7 — BSD 3-Clause
+    https://pub.dev/packages/crypto
+    Copyright 2015, the Dart project authors. Hashing.
+
+Flutter and the Dart SDK — BSD 3-Clause
+    https://flutter.dev
+    Copyright 2014 The Flutter Authors.
+
+The complete license text of every bundled dependency is available inside the
+app: Settings -> Open source licenses.
+
+
+================================================================================
+ASSETS
+================================================================================
+
+Cburnett chess piece set — CC-BY-SA 3.0
+    https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces
+    Colin M.L. Burnett. Default piece set, supplied via chessground.
+
+    CC-BY-SA 3.0 requires attribution and share-alike on the piece images.
+
+
+================================================================================
+BUILD-TIME ONLY (not shipped with the application)
+================================================================================
+
+python-chess 1.11.2 — GPL-3.0+
+    https://pypi.org/project/chess/
+    Niklas Fiekas. FEN and UCI parsing, legality and mate validation.
+    Used only by pipeline/ when regenerating puzzles.sqlite.
+
+PyYAML 6.0.2 — MIT
+    https://pypi.org/project/PyYAML/
+    Theme taxonomy loading.
+
+pytest 8.3.4 — MIT
+    https://pypi.org/project/pytest/
+    Pipeline test runner.
+
+
+================================================================================
+ALGORITHMS AND RESEARCH
+================================================================================
+
+These are published methods reimplemented from their descriptions. No code was
+copied from the sources below; the citations are intellectual credit.
+
+Glicko-2 rating system
+    Mark E. Glickman. "Example of the Glicko-2 system" (2013) and the
+    Glicko-2 specification. http://www.glicko.net/glicko.html
+    Reimplemented in app_logic/lib/src/glicko2.dart.
+
+FSRS (Free Spaced Repetition Scheduler), version 4
+    Open Spaced Repetition. https://github.com/open-spaced-repetition
+    The reference implementation is MIT. Chess Gym contains an independent
+    pure-Dart reimplementation in app_logic/lib/src/fsrs.dart; default weights
+    are the published FSRS-4 defaults.
+
+Chess aesthetics / interestingness scoring
+    Azlan Iqbal et al., including "A Discrete Computational Aesthetics Model
+    for a Zero-sum Perfect Information Game" and related AAAI work.
+    Informs the interestingness formula in pipeline/stages/score.py.
+    Research influence only; no code derived.
+
+Desirable difficulty
+    Robert A. Bjork. Informs the upward-biased rating band in
+    app_logic/lib/src/selection.dart.
+
+Chunking and chess expertise
+    William G. Chase and Herbert A. Simon, "Perception in Chess" (1973).
+    Adriaan de Groot, "Thought and Choice in Chess" (1946).
+    Background for the theme taxonomy and progression design.
+
+
+================================================================================
+A NOTE ON THE CITATIONS ABOVE
+================================================================================
+
+The papers and books cited in this file are credited as intellectual sources
+only. None of their text is reproduced here, and no code was copied from any
+reference implementation; each method was reimplemented from its published
+description. Those works remain under their publishers' terms.

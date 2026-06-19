@@ -1,0 +1,44 @@
+[
+  {
+    "id": "famous_saavedra",
+    "fen": "8/8/1KP5/3r4/8/8/8/k7 w - - 0 1",
+    "setup_move": null,
+    "solution_uci": "c6c7 d5d4 b6b5 d4d1 b5b4 d1c1 c7c8r a1a2 c8a8",
+    "themes": ["underpromotion", "endgame", "quietMove", "rookEndgame"],
+    "rating": 2200,
+    "rating_dev": 50,
+    "popularity": 100,
+    "nb_plays": 50000,
+    "origin_kind": "famous",
+    "origin_label": "Saavedra position, 1895",
+    "explanation": "The stunning underpromotion to a rook defeats the stalemate defense and wins."
+  },
+  {
+    "id": "famous_reti_1921",
+    "fen": "7K/8/k1P5/7p/8/8/8/8 w - - 0 1",
+    "setup_move": null,
+    "solution_uci": "h8g7 h5h4 g7f6 h4h3 f6e5",
+    "themes": ["quietMove", "endgame", "pawnEndgame"],
+    "rating": 2100,
+    "rating_dev": 60,
+    "popularity": 100,
+    "nb_plays": 40000,
+    "origin_kind": "famous",
+    "origin_label": "Réti study, 1921",
+    "explanation": "The white king approaches two targets at once — the pawn on h5 and supporting the c-pawn."
+  },
+  {
+    "id": "famous_lasker_bauer",
+    "fen": "r4k2/pp1n1pp1/1qp1b3/4p2p/8/1PPP1QPP/PB2NP2/R4RK1 w - - 0 1",
+    "setup_move": null,
+    "solution_uci": "f3f6 g7f6 e2f4",
+    "themes": ["sacrifice", "kingHunt", "attraction"],
+    "rating": 1800,
+    "rating_dev": 60,
+    "popularity": 95,
+    "nb_plays": 20000,
+    "origin_kind": "famous",
+    "origin_label": "Lasker–Bauer, Amsterdam 1889",
+    "explanation": "A classic sacrificial attack exploiting the weakened dark squares."
+  }
+]
