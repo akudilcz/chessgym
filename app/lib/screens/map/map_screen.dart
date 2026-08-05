@@ -291,11 +291,12 @@ class _HudHeader extends StatelessWidget {
     // Clear rate = distinct solved / distinct seen, matching the player's
     // mental model: "of the puzzles I've seen, how many did I solve?".
     // Counting total attempts instead would make a puzzle you failed and
-    // then solved lower your accuracy.
-    final distinctSeen = snapshot.totalSolved + snapshot.missedCount;
+    // then solved lower your accuracy. (Summing solved + missed here would
+    // double-count a puzzle that was solved once but failed most recently.)
+    final distinctSeen = snapshot.distinctSeen;
     final acc = distinctSeen == 0
         ? 0.0
-        : snapshot.totalSolved / distinctSeen;
+        : (snapshot.totalSolved / distinctSeen).clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),

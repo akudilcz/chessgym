@@ -108,6 +108,61 @@ void main() {
       expect(c.due!.year, lessThan(t0.year + 10));
     });
 
+    test('a rehydrated card is not re-initialized', () {
+      // Persistence does not store reps, so a card loaded from disk has
+      // reps == 0 but a non-null lastReview. Treating it as new would
+      // discard its accumulated stability and reset the schedule — the
+      // interval must keep growing across app sessions instead.
+      final c = FsrsCard(
+        stability: 15.0,
+        difficulty: 6.0,
+        lastReview: t0,
+        reps: 0,
+      );
+      expect(c.isNew, isFalse);
+      Fsrs().review(c, Rating.good, t0.add(const Duration(days: 15)));
+      expect(c.stability, greaterThan(15.0),
+          reason: 'a recall must build on the stored stability, '
+              'not restart from the initial-stability table');
+    });
+
+    test('Hard penalty and Easy bonus order the stability gains', () {
+      FsrsCard cardWith(Rating r) {
+        final c = FsrsCard(
+          stability: 10.0,
+          difficulty: 5.0,
+          lastReview: t0,
+          reps: 3,
+        );
+        Fsrs().review(c, r, t0.add(const Duration(days: 10)));
+        return c;
+      }
+
+      final hard = cardWith(Rating.hard);
+      final good = cardWith(Rating.good);
+      final easy = cardWith(Rating.easy);
+      expect(hard.stability, lessThan(good.stability),
+          reason: 'w[15] hard penalty must dampen the gain');
+      expect(easy.stability, greaterThan(good.stability),
+          reason: 'w[16] easy bonus must amplify the gain');
+    });
+
+    test('Again increases difficulty, Easy decreases it', () {
+      FsrsCard cardWith(Rating r) {
+        final c = FsrsCard(
+          stability: 10.0,
+          difficulty: 5.0,
+          lastReview: t0,
+          reps: 3,
+        );
+        Fsrs().review(c, r, t0.add(const Duration(days: 10)));
+        return c;
+      }
+
+      expect(cardWith(Rating.again).difficulty, greaterThan(5.0));
+      expect(cardWith(Rating.easy).difficulty, lessThan(5.0));
+    });
+
     test('a review dated before the last one cannot go negative', () {
       // Clock changes and backfilled history produce negative elapsed time.
       final c = FsrsCard(

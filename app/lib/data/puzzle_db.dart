@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
@@ -12,11 +12,10 @@ import '../domain/puzzle.dart';
 /// Read-only access to the shipped `puzzles.sqlite` asset.
 ///
 /// On open:
-///   1. Load the shipped asset hash (sha256 over a small header prefix of
-///      the asset so we don't load the whole file into memory).
-///   2. Compare against the on-device file; if absent or stale, overwrite
-///      so app-store updates with a newer puzzle DB actually reach users.
-///   3. Open read-only via sqflite / sqflite_common_ffi (platform-agnostic).
+///   1. Compare [assetVersion] against the version-marker file on disk; if
+///      the on-device copy is absent or stale, overwrite it so app-store
+///      updates with a newer puzzle DB actually reach users.
+///   2. Open read-only via sqflite / sqflite_common_ffi (platform-agnostic).
 class PuzzleDb {
   static const _assetPath = 'assets/puzzles/puzzles.sqlite';
 
@@ -39,12 +38,27 @@ class PuzzleDb {
   Future<List<ThemeInfo>>? _themesCache;
   Future<Map<String, int>>? _themeTotalsCache;
 
+  // Wall-clock microseconds are correlated with call timing and biased
+  // against round list sizes; a real PRNG is free of both problems.
+  static final math.Random _rng = math.Random();
+
   /// puzzle_id → list of theme_ids. 395k rows in the shipped corpus;
   /// building the Dart map round-trips every row through the sqflite
   /// platform channel, so we cache for the PuzzleDb lifetime. Cold call
   /// ~700–1400 ms on mid-range Android, warm call is instant.
   Future<Map<String, List<String>>> puzzleThemesMap() {
-    return _themesMapCache ??= _buildThemesMap();
+    return _themesMapCache ??=
+        _dropOnError(_buildThemesMap(), () => _themesMapCache = null);
+  }
+
+  /// Cache the future only while it is succeeding: a `??=`-retained failed
+  /// future replays its error on every later call, so one transient read
+  /// error at startup would brick the themes/totals for the whole session.
+  Future<T> _dropOnError<T>(Future<T> future, void Function() clear) {
+    return future.catchError((Object e) {
+      clear();
+      throw e;
+    });
   }
 
   Future<Map<String, List<String>>> _buildThemesMap() async {
@@ -61,16 +75,16 @@ class PuzzleDb {
   static Future<PuzzleDb> open() async {
     final dir = await getApplicationSupportDirectory();
     final dest = File(p.join(dir.path, 'puzzles.sqlite'));
-    final hashFile = File(p.join(dir.path, 'puzzles.sqlite.sha256'));
 
     // On Android the asset is 58+ MB. Loading it into memory and SHA256-ing
     // it on the main isolate triggered ANRs that Android killed. New path:
-    //   - If the destination file already exists, SKIP the hash+copy entirely.
-    //     Version bumps are detected via a lightweight pubspec-version
-    //     marker file instead — cheap, no 58 MB read.
+    //   - If the destination file already exists, SKIP the copy entirely.
+    //     Version bumps are detected via a lightweight version marker file
+    //     instead — cheap, no 58 MB read.
     //   - Only on first install or when the version marker mismatches do we
-    //     do the heavy copy, and we stream-write via openRead.pipe to avoid
-    //     holding the whole thing in memory.
+    //     do the heavy copy. (A sha256 sidecar used to be computed here too;
+    //     nothing ever read it, and hashing 58 MB on the UI isolate was the
+    //     most expensive part of the path, so it is gone.)
     const assetVersion = PuzzleDb.assetVersion;
     final versionFile = File(p.join(dir.path, 'puzzles.sqlite.version'));
     final existingVersion =
@@ -87,12 +101,9 @@ class PuzzleDb {
         flush: true,
       );
       await versionFile.writeAsString(assetVersion, flush: true);
-      // Keep a sha256 sidecar for any future code that needs it, but only
-      // compute it during the already-heavy copy path.
-      final h = sha256.convert(assetBytes.buffer.asUint8List(
-              assetBytes.offsetInBytes, assetBytes.lengthInBytes))
-          .toString();
-      await hashFile.writeAsString(h, flush: true);
+      // Clean up the sidecar left behind by older builds.
+      final legacyHashFile = File(p.join(dir.path, 'puzzles.sqlite.sha256'));
+      if (legacyHashFile.existsSync()) await legacyHashFile.delete();
     }
 
     final db = await databaseFactory.openDatabase(
@@ -120,7 +131,8 @@ class PuzzleDb {
 
 /// For each theme, how many puzzles reference it in the shipped corpus.
   Future<Map<String, int>> themeTotals() {
-    return _themeTotalsCache ??= _buildThemeTotals();
+    return _themeTotalsCache ??=
+        _dropOnError(_buildThemeTotals(), () => _themeTotalsCache = null);
   }
 
   Future<Map<String, int>> _buildThemeTotals() async {
@@ -133,7 +145,8 @@ class PuzzleDb {
   }
 
   Future<List<ThemeInfo>> listThemes() {
-    return _themesCache ??= _buildThemes();
+    return _themesCache ??=
+        _dropOnError(_buildThemes(), () => _themesCache = null);
   }
 
   Future<List<ThemeInfo>> _buildThemes() async {
@@ -205,7 +218,7 @@ class PuzzleDb {
       return null;
     }
     // Random pick from the top-interest set.
-    final r = rows[DateTime.now().microsecondsSinceEpoch % rows.length];
+    final r = rows[_rng.nextInt(rows.length)];
     return _rowToPuzzle(r);
   }
 

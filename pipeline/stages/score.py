@@ -225,6 +225,10 @@ def score_all(puzzles: list[Puzzle]) -> list[Puzzle]:
     med, mad = _mad(raw_scores)
     for p in puzzles:
         z = (p.features["raw"] - med) / (1.4826 * mad)  # 1.4826 for normal consistency
+        # Clamp the exponent: at corpus scale (or when MAD degenerates to
+        # its 1.0 fallback) a single extreme outlier is enough to overflow
+        # math.exp. Mirrors normalize_interest in run_stream.py.
+        z = max(-60.0, min(60.0, z))
         p.interest = 1.0 / (1.0 + math.exp(-z))
 
     return puzzles

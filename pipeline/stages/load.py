@@ -13,11 +13,17 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 import chess
+
+#: Exceptions a malformed CSV row can raise while being parsed: bad FEN /
+#: illegal move (ValueError subclasses in python-chess), missing column
+#: (DictReader yields None → AttributeError on .split), non-numeric field.
+ROW_PARSE_ERRORS = (ValueError, AttributeError, TypeError, KeyError)
 
 
 @dataclass
@@ -48,33 +54,50 @@ def _derive_displayed_board(fen: str, setup_uci: str) -> chess.Board:
 
 
 def load_lichess_csv(path: Path) -> Iterable[Puzzle]:
-    """Read the Lichess puzzle CSV (mock or real) into Puzzle records."""
-    with path.open() as fh:
+    """Read the Lichess puzzle CSV (mock or real) into Puzzle records.
+
+    Malformed rows (truncated line, bad FEN, illegal setup move, non-numeric
+    field) are skipped and counted, never allowed to crash the run: one bad
+    row in a 6M-row download must not kill a multi-minute build with a
+    traceback that carries no row context.
+    """
+    skipped = 0
+    with path.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            moves = row["Moves"].split()
-            if len(moves) < 2:
-                # Lichess puzzles always have at least a setup + solver move.
+            try:
+                moves = row["Moves"].split()
+                if len(moves) < 2:
+                    # Lichess puzzles always have at least setup + solver move.
+                    continue
+                setup = moves[0]
+                solver_and_rest = moves[1:]
+                displayed = _derive_displayed_board(row["FEN"], setup)
+                puzzle = Puzzle(
+                    id=row["PuzzleId"],
+                    fen=row["FEN"],
+                    setup_move=setup,
+                    side_to_move="w" if displayed.turn == chess.WHITE else "b",
+                    moves_uci=solver_and_rest,
+                    themes=[],  # filled by themes stage
+                    lichess_themes=row["Themes"].split(),
+                    rating=int(row["Rating"]),
+                    rating_dev=int(row["RatingDeviation"]),
+                    popularity=int(row["Popularity"]),
+                    nb_plays=int(row["NbPlays"]),
+                    origin_kind="lichess",
+                    origin_label=None,
+                    explanation=None,
+                )
+            except ROW_PARSE_ERRORS:
+                skipped += 1
                 continue
-            setup = moves[0]
-            solver_and_rest = moves[1:]
-            displayed = _derive_displayed_board(row["FEN"], setup)
-            yield Puzzle(
-                id=row["PuzzleId"],
-                fen=row["FEN"],
-                setup_move=setup,
-                side_to_move="w" if displayed.turn == chess.WHITE else "b",
-                moves_uci=solver_and_rest,
-                themes=[],  # filled by themes stage
-                lichess_themes=row["Themes"].split(),
-                rating=int(row["Rating"]),
-                rating_dev=int(row["RatingDeviation"]),
-                popularity=int(row["Popularity"]),
-                nb_plays=int(row["NbPlays"]),
-                origin_kind="lichess",
-                origin_label=None,
-                explanation=None,
-            )
+            yield puzzle
+    if skipped:
+        print(
+            f"WARNING: skipped {skipped} malformed rows in {path}",
+            file=sys.stderr,
+        )
 
 
 def load_famous_json(path: Path) -> Iterable[Puzzle]:

@@ -180,6 +180,19 @@ void main() {
       );
     });
 
+    test('degenerate floor/ceiling falls back to a step, not permanent 0', () {
+      // A constant 0.0 here would mark the theme permanently weak and
+      // dead-end every unlock chain that lists it as a prereq.
+      expect(
+        mastery(playerRating: 1500, floorRating: 1500, ceilingRating: 1500),
+        1.0,
+      );
+      expect(
+        mastery(playerRating: 1400, floorRating: 1500, ceilingRating: 1200),
+        0.0,
+      );
+    });
+
     test('unlock requires all prereqs', () {
       final masteries = {'a': 0.6, 'b': 0.3};
       expect(

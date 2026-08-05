@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../domain/puzzle.dart';
 import 'player_db.dart';
@@ -76,6 +77,9 @@ class JourneySnapshot {
   final int totalSolved;
   final int totalAttempts;
 
+  /// Distinct puzzles ever attempted — the clear-rate denominator.
+  final int distinctSeen;
+
   /// Puzzles whose MOST RECENT outcome was 'failed' — i.e. the player
   /// hasn't yet cleared them. Goal of the app: drive this to zero.
   final int missedCount;
@@ -99,6 +103,7 @@ class JourneySnapshot {
     required this.globalRating,
     required this.totalSolved,
     required this.totalAttempts,
+    this.distinctSeen = 0,
     required this.missedCount,
     required this.xp,
     required this.level,
@@ -160,6 +165,8 @@ class ProgressService {
     final totalSolved = await step('totalSolved', player.totalSolvedCount);
     final totalAttempts =
         await step('totalAttempts', player.totalAttemptsCount);
+    final distinctSeen =
+        await step('distinctSeen', player.distinctSeenCount);
     final missed = await step('missedCount', player.missedCount);
     final nowTs = DateTime.now();
 
@@ -327,17 +334,19 @@ class ProgressService {
     );
     final level = levelFromXp(xp);
 
-    final top = profile.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    // ignore: avoid_print
-    print('[SNAPSHOT] total=${swTotal.elapsedMilliseconds}ms '
-        '${top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ')}');
+    if (kDebugMode) {
+      final top = profile.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      debugPrint('[SNAPSHOT] total=${swTotal.elapsedMilliseconds}ms '
+          '${top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ')}');
+    }
 
     return JourneySnapshot(
       themes: progresses,
       globalRating: global,
       totalSolved: totalSolved,
       totalAttempts: totalAttempts,
+      distinctSeen: distinctSeen,
       missedCount: missed,
       xp: xp,
       level: level,

@@ -60,8 +60,9 @@ With a further 20% chance, serve the most-overdue FSRS-scheduled puzzle. Prevent
 
 ### Step 3: theme pick
 
-- **45% share → PRIORITY theme** (`JourneySnapshot.recommendedNext`). The single weakest theme gets a guaranteed slice so the dashboard's `PRIORITY` badge means what it says.
-- **55% share → softmax(weakness^α)** over all themes, with α = 5 (steep skew) and a 2% per-theme probability floor so nothing starves.
+Thompson sampling over the per-theme posterior: draw one sample from each theme's Normal(weakness, uncertainty) — uncertainty derived from the theme's Glicko RD — and serve the argmax. High-weakness themes dominate (the dashboard's `PRIORITY` theme wins most draws by construction) while high-uncertainty themes still surface for exploration, without needing an explicit share split or anti-cluster rule.
+
+The dashboard's displayed per-theme "next puzzle" percentage is a closed-form softmax(weakness^α) approximation of this argmax distribution (α = 5, 2% per-theme floor) — computing the exact Thompson probabilities would need Monte Carlo on the UI isolate.
 
 ### Step 4: puzzle within theme
 

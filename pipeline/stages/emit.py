@@ -95,13 +95,20 @@ def percentile(xs: list[int], p: float) -> int:
     return s[k]
 
 
+#: Daily-index depth: top 5% of the corpus by interest, floor of 30.
+#: Shared with run_stream.finalize so both entry points build the same
+#: daily pool for the same corpus size.
+DAILY_TOP_QUANTILE = 0.05
+DAILY_MIN = 30
+
+
 def emit(
     puzzles: list[Puzzle],
     tax: ThemeTaxonomy,
     out_path: Path,
     version: str,
     source_hash: str,
-    daily_top_quantile: float = 0.05,
+    daily_top_quantile: float = DAILY_TOP_QUANTILE,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
@@ -165,7 +172,7 @@ def emit(
 
         # daily_index: top-quantile puzzles by interest, stable-sorted by id.
         top = sorted(puzzles, key=lambda p: (-p.interest, p.id))
-        n_daily = max(30, int(len(puzzles) * daily_top_quantile))
+        n_daily = max(DAILY_MIN, int(len(puzzles) * daily_top_quantile))
         daily = top[:n_daily]
         conn.executemany(
             "INSERT INTO daily_index VALUES (?,?)",
@@ -187,8 +194,15 @@ def emit(
 
 
 def source_hash_of(*paths: Path) -> str:
+    """Reproducibility fingerprint over every input that shapes the corpus.
+
+    Missing files are an error, not a skip: a hash silently computed over
+    fewer inputs than intended would collide with a legitimately different
+    build and defeat the audit trail.
+    """
     h = hashlib.sha256()
     for p in paths:
-        if p and p.exists():
-            h.update(p.read_bytes())
+        if p is None or not p.exists():
+            raise FileNotFoundError(f"source_hash_of: missing input {p}")
+        h.update(p.read_bytes())
     return h.hexdigest()[:16]

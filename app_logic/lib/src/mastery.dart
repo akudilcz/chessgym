@@ -5,7 +5,12 @@ double mastery({
   required int floorRating,
   required int ceilingRating,
 }) {
-  if (ceilingRating <= floorRating) return 0.0;
+  // Degenerate range (bad theme data): fall back to a step function rather
+  // than a constant 0.0, which would make the theme look permanently weak
+  // and dead-end every unlock chain that lists it as a prereq.
+  if (ceilingRating <= floorRating) {
+    return playerRating >= floorRating ? 1.0 : 0.0;
+  }
   final t = (playerRating - floorRating) / (ceilingRating - floorRating);
   return t.clamp(0.0, 1.0);
 }

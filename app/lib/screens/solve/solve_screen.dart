@@ -5,6 +5,7 @@ import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessground/chessground.dart' as cg;
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -131,8 +132,15 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
         p ??= await pzDb.anyPuzzle();
       } else {
         final svc = await ref.read(selectionServiceProvider.future);
+        // Share the dashboard's journey snapshot rather than letting
+        // pickNext recompute it: the snapshot is expensive and runs on the
+        // UI isolate. journeyProvider is invalidated after every resolution,
+        // so this is never stale.
+        final snap = await ref.read(journeyProvider.future);
         p = await svc.pickNext(
-            themeFocus: widget.themeFocus, now: DateTime.now());
+            themeFocus: widget.themeFocus,
+            now: DateTime.now(),
+            snapshot: snap);
         // The selection service is supposed to always return something;
         // still, belt-and-braces — pull any puzzle if null.
         if (p == null) {
@@ -149,9 +157,22 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       } catch (_) {/* give up */}
     }
     if (!mounted) return;
-    if (p == null) {
-      // DB is truly empty — pop back to the dashboard so the player isn't
-      // stuck on a spinner. Should never happen in shipped builds.
+    // Construct the controller BEFORE setState: it parses the FEN and
+    // setup move, so a single corrupt corpus row would otherwise throw
+    // mid-setState and hard-crash the screen instead of degrading.
+    PuzzleController? ctrl;
+    if (p != null) {
+      try {
+        ctrl = PuzzleController(p);
+      } catch (e, st) {
+        debugPrint('[solve] corrupt puzzle ${p.id}: $e\n$st');
+        p = null;
+      }
+    }
+    if (p == null || ctrl == null) {
+      // DB is truly empty (or the row was corrupt) — pop back to the
+      // dashboard so the player isn't stuck on a spinner. Should never
+      // happen in shipped builds.
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
@@ -159,7 +180,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     }
     setState(() {
       _puzzle = p;
-      _ctrl = PuzzleController(p!);
+      _ctrl = ctrl;
       _solveStart = DateTime.now();
       _canGiveUp = false;
     });
@@ -428,6 +449,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   /// be escaped by leaving the screen.
   Future<void> _finish({required bool solved, Duration? settle}) async {
     if (!mounted || _puzzle == null) return;
+    final generation = _generation;
     _giveUpTimer?.cancel();
     final puzzle = _puzzle!;
     final firstWrong = _ctrl?.firstWrongUci;
@@ -480,10 +502,13 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     if (solved) {
       if (existingCard != null) {
         final rating = firstWrong == null ? Rating.good : Rating.hard;
+        final previousRating = existingCard.lastRating;
         fsrs.review(existingCard, rating, DateTime.now());
-        if (rating == Rating.good &&
-            existingCard.stability > 21.0 &&
-            existingCard.reps >= 3) {
+        if (graduatesReview(
+          rating: rating,
+          previousRating: previousRating,
+          stability: existingCard.stability,
+        )) {
           clearReview = true;
         } else {
           reviewCard = existingCard;
@@ -518,17 +543,21 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       await step('advanceCalibration',
           () => playerDb.advanceCalibration(solved: solved));
     }
-    final totalMs = swTotal.elapsedMilliseconds;
-    final top = profile.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final topStr = top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ');
-    // ignore: avoid_print
-    print('[FINISH] total=${totalMs}ms $topStr');
+    if (kDebugMode) {
+      final totalMs = swTotal.elapsedMilliseconds;
+      final top = profile.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final topStr = top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ');
+      debugPrint('[FINISH] total=${totalMs}ms $topStr');
+    }
 
     // The result is now durable; hold only for the visual beat.
     if (settle != null) await Future.delayed(settle);
 
-    if (!mounted) return;
+    // Restart during the settle window swapped in a fresh board; navigating
+    // now would yank it away. The outcome above is already persisted, so
+    // bailing out loses nothing.
+    if (!mounted || !_stillCurrent(generation)) return;
     // Invalidate derived providers so the dashboard shows fresh stats
     // the instant the player returns — accuracy, missed count, and
     // per-theme progress all depend on attempts we just wrote.

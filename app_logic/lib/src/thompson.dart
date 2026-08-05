@@ -17,8 +17,16 @@ int thompsonPick({
   required List<double> uncertainty,
   required math.Random rng,
 }) {
-  assert(weakness.length == uncertainty.length);
-  assert(weakness.isNotEmpty);
+  // Thrown (not asserted): in release mode an empty list would silently
+  // return index 0 and a length mismatch would RangeError mid-loop.
+  if (weakness.isEmpty) {
+    throw ArgumentError.value(weakness, 'weakness', 'must not be empty');
+  }
+  if (weakness.length != uncertainty.length) {
+    throw ArgumentError(
+        'weakness (${weakness.length}) and uncertainty '
+        '(${uncertainty.length}) must have the same length');
+  }
   var bestIdx = 0;
   var bestSample = -double.infinity;
   for (var i = 0; i < weakness.length; i++) {

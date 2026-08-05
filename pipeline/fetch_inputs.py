@@ -34,15 +34,31 @@ def fetch(rows: int | None, out: Path) -> int:
         curl.stdout.close()
     n_rows_written = 0
     limit = rows if rows is not None else None
-    with out.open("w") as fh:
+    truncated = False
+    with out.open("w", encoding="utf-8") as fh:
         assert zstd.stdout is not None
         for line in zstd.stdout:
-            if limit is not None and n_rows_written > limit:
+            if limit is not None and n_rows_written >= limit:
+                truncated = True
                 break
-            fh.write(line.decode())
+            fh.write(line.decode("utf-8"))
             n_rows_written += 1
-    zstd.terminate()
-    curl.terminate()
+    if truncated:
+        # We abandoned the stream on purpose; kill both ends and reap them.
+        zstd.terminate()
+        curl.terminate()
+        zstd.wait()
+        curl.wait()
+    else:
+        # Stream ended by itself — a failed curl (404, network down) also
+        # looks like this, so the exit codes are the only signal that the
+        # file is silently empty/truncated rather than complete.
+        zstd.wait()
+        curl.wait()
+        if curl.returncode != 0:
+            raise RuntimeError(f"curl failed with exit code {curl.returncode}")
+        if zstd.returncode != 0:
+            raise RuntimeError(f"zstdcat failed with exit code {zstd.returncode}")
     return n_rows_written
 
 
@@ -54,7 +70,14 @@ def main() -> int:
                    default=Path("pipeline/input/lichess_db_puzzle.csv"))
     args = p.parse_args()
     rows = None if args.rows == "all" else int(args.rows)
-    n = fetch(rows, args.out)
+    try:
+        n = fetch(rows, args.out)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if n == 0:
+        print("ERROR: no rows fetched", file=sys.stderr)
+        return 1
     print(f"wrote {n} rows to {args.out}", file=sys.stderr)
     return 0
 

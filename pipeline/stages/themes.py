@@ -42,6 +42,10 @@ class ThemeTaxonomy:
         def dfs(u: str) -> bool:
             color[u] = grey
             for v in self.by_id[u].get("prereqs", []):
+                if v not in self.by_id:
+                    # A prereq pointing at a nonexistent theme is a broken
+                    # graph, not a KeyError for the caller to decipher.
+                    return False
                 if color.get(v, white) == grey:
                     return False
                 if color.get(v, white) == white and not dfs(v):

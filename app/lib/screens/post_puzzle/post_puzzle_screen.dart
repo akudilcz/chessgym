@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,29 +34,49 @@ class PostPuzzleScreen extends ConsumerStatefulWidget {
 class _PostPuzzleScreenState extends ConsumerState<PostPuzzleScreen> {
   Duration? _autoAdvance;
   bool _advanced = false;
+  Timer? _autoAdvanceTimer;
+
+  /// Memoized: building this future inline in build() re-queried the stats
+  /// on every rebuild (each async provider resolution), flickering the
+  /// history box through its null frame.
+  late final Future<PuzzleStats?> _statsFuture;
 
   @override
   void initState() {
     super.initState();
+    _statsFuture = ref
+        .read(playerDbProvider.future)
+        .then((pdb) => pdb.puzzleStats(widget.puzzle.id));
     _setupAutoAdvance();
+  }
+
+  @override
+  void dispose() {
+    _autoAdvanceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _setupAutoAdvance() async {
     final prefs = await ref.read(prefsProvider.future);
     if (!mounted) return;
-    final ms = prefs.getInt(Prefs.kAutoAdvanceMs, defaultValue: 10400);
+    final ms = prefs.getInt(Prefs.kAutoAdvanceMs, defaultValue: Prefs.kAutoAdvanceDefaultMs);
     if (ms <= 0) {
       setState(() => _autoAdvance = null);
       return;
     }
     setState(() => _autoAdvance = Duration(milliseconds: ms));
-    Future.delayed(_autoAdvance!, () {
+    _autoAdvanceTimer = Timer(_autoAdvance!, () {
       if (!mounted || _advanced) return;
       // Only advance if this screen is still the one being looked at.
       // Tapping Analyze pushes a route on top without setting _advanced,
       // and pushReplacement replaces the TOPMOST route — so this would
       // yank the analysis away mid-read and strand a dead route beneath.
-      if (ModalRoute.of(context)?.isCurrent == false) return;
+      // The countdown is spent either way, so hide the bar rather than
+      // leave an expired ticker that will never advance.
+      if (ModalRoute.of(context)?.isCurrent == false) {
+        setState(() => _autoAdvance = null);
+        return;
+      }
       _advanceToNext();
     });
   }
@@ -170,9 +192,7 @@ class _PostPuzzleScreenState extends ConsumerState<PostPuzzleScreen> {
                       const SizedBox(height: 12),
                       // Your history on THIS puzzle.
                       FutureBuilder<PuzzleStats?>(
-                        future: ref
-                            .read(playerDbProvider.future)
-                            .then((pdb) => pdb.puzzleStats(puzzle.id)),
+                        future: _statsFuture,
                         builder: (ctx, snap) {
                           final s = snap.data;
                           if (s == null || s.attempts == 0) {

@@ -2,11 +2,15 @@
 Streaming curation pipeline.
 
 Unlike `run.py`, this processes the Lichess CSV row-by-row and writes
-chunks to `puzzles.sqlite` as it goes. The output DB is usable as soon
-as the first chunk lands — at app ship-time, bumping the `assetVersion`
-string in `app/lib/data/puzzle_db.dart` triggers a fresh copy on the
-next launch via the `puzzles.sqlite.version` sidecar. (The app does
-NOT sha256 the file on every launch; that was an Android ANR.)
+chunks to `puzzles.sqlite` as it goes, so memory stays flat regardless of
+input size. The output DB is only complete after finalize() runs: until
+then `corpus_meta` and `daily_index` are empty, theme floors are
+placeholders and the `interest` column holds unnormalized partial sums —
+a crash mid-run leaves a half-baked file that must be rebuilt. At app
+ship-time, bumping the `assetVersion` string in
+`app/lib/data/puzzle_db.dart` triggers a fresh copy on the next launch
+via the `puzzles.sqlite.version` sidecar. (The app does NOT sha256 the
+file on every launch; that was an Android ANR.)
 
 Usage:
     python -m pipeline.run_stream \
@@ -24,45 +28,48 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import math
 import sqlite3
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Iterable
 
 import chess
 
-from .stages.emit import SCHEMA, source_hash_of, percentile, built_at_iso
-from .stages.load import Puzzle, load_famous_json
+from .stages.emit import SCHEMA, DAILY_TOP_QUANTILE, source_hash_of, \
+    percentile, built_at_iso
+from .stages.load import Puzzle, ROW_PARSE_ERRORS, load_famous_json
 from .stages.score import compute_features, WEIGHTS
 from .stages.themes import ThemeTaxonomy
 
 
-def cheap_csv_predicate(row: dict, rare_themes: set[str], tax: ThemeTaxonomy) -> bool:
-    """Return True iff this raw CSV row is worth the expensive stages.
+def cheap_csv_predicate(
+    row: dict, rare_themes: set[str], tax: ThemeTaxonomy
+) -> list[str] | None:
+    """Return the row's canonical themes iff it is worth the expensive
+    stages, else None.
 
     Rare themes get a relaxed filter (RD only). Common themes need the
-    standard popularity / plays / RD bar. Only returns rows that also have
-    at least one theme we recognize.
+    standard popularity / plays / RD bar. Only accepts rows that also have
+    at least one theme we recognize. Returning the canonical list (instead
+    of a bool) saves the caller recomputing it for every surviving row.
     """
     tags = row["Themes"].split()
     canonical = tax.canonical(tags)
     if not canonical:
-        return False
+        return None
     primary = canonical[0]
     rd = int(row["RatingDeviation"])
     if primary in rare_themes:
-        return rd <= 120
+        return canonical if rd <= 120 else None
     if rd > 90:
-        return False
+        return None
     if int(row["NbPlays"]) < 1000:
-        return False
+        return None
     if int(row["Popularity"]) < 80:
-        return False
-    return True
+        return None
+    return canonical
 
 
 def validate_solution(fen: str, setup_uci: str, moves_uci: list[str]) -> bool:
@@ -287,17 +294,20 @@ def finalize(
             (floor, ceiling, t),
         )
 
-    # Daily index.
+    # Daily index — same depth policy as emit.py, so both entry points
+    # build the same daily pool for the same corpus size.
     conn.execute("DELETE FROM daily_index")
+    n_puzzles = conn.execute("SELECT COUNT(*) FROM puzzles").fetchone()[0]
+    n_daily = max(30, int(n_puzzles * DAILY_TOP_QUANTILE))
     rows = list(conn.execute(
         # `id` breaks interest ties; without it equal-interest puzzles order
         # by physical row position and the daily index is not reproducible.
-        "SELECT id FROM puzzles ORDER BY interest DESC, id LIMIT 200"))
+        "SELECT id FROM puzzles ORDER BY interest DESC, id LIMIT ?",
+        (n_daily,)))
     for i, (pid,) in enumerate(rows):
         conn.execute("INSERT INTO daily_index VALUES (?,?)", (i, pid))
 
     # Meta.
-    n_puzzles = conn.execute("SELECT COUNT(*) FROM puzzles").fetchone()[0]
     n_themes = len(tax.themes)
     conn.execute("DELETE FROM corpus_meta")
     conn.execute(
@@ -320,6 +330,7 @@ def stream(
     chunk_size: int,
     coverage_path: Path | None,
     version: str,
+    themes_path: Path | None = None,
 ) -> int:
     # Load famous positions first — they're few and should always land.
     famous: list[Puzzle] = []
@@ -332,13 +343,18 @@ def stream(
                     p.themes = list(p.themes) + ["famous"]
 
     # First pass over the CSV to compute rare-theme set (cheap — just
-    # iterate primary themes of every row).
+    # iterate primary themes of every row). Malformed rows are skipped here
+    # and counted in the main pass; a truncated download must not crash a
+    # multi-hour build.
     print("[1/2] scanning theme frequencies...", file=sys.stderr)
     theme_counter: Counter = Counter()
-    with lichess_csv.open() as fh:
+    with lichess_csv.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            canonical = tax.canonical(row["Themes"].split())
+            try:
+                canonical = tax.canonical(row["Themes"].split())
+            except ROW_PARSE_ERRORS:
+                continue
             if canonical:
                 theme_counter[canonical[0]] += 1
     rare_cutoff = 3 * per_theme
@@ -355,19 +371,35 @@ def stream(
 
     conn = init_db(out_path, tax)
     per_theme_count: dict[str, int] = defaultdict(int)
+    # Ids already inserted. INSERT OR IGNORE would swallow a duplicate
+    # silently AFTER kept/per_theme_count were incremented, overstating
+    # coverage.json and the quota accounting.
+    seen_ids: set[str] = set()
 
     # Emit famous positions first.
     flush_chunk(conn, famous, theme_frequency, tax)
     for f in famous:
+        seen_ids.add(f.id)
         for t in f.themes:
             per_theme_count[t] += 1
     print(f"[2/2] wrote {len(famous)} famous positions", file=sys.stderr)
+
+    def all_quotas_met() -> bool:
+        # 'famous' is exempt: it fills from famous_positions.json (3 rows),
+        # never from the CSV, so requiring it would keep the scan running
+        # to the last row even with every real theme full.
+        return all(
+            per_theme_count[t["id"]] >= per_theme
+            for t in tax.themes
+            if t["id"] != "famous" and theme_counter.get(t["id"], 0) > 0
+        )
 
     # Streaming pass.
     chunk: list[Puzzle] = []
     kept = 0
     seen_rows = 0
-    with lichess_csv.open() as fh:
+    malformed = 0
+    with lichess_csv.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             seen_rows += 1
@@ -377,19 +409,28 @@ def stream(
                     f"themes_full={sum(1 for t in tax.themes if per_theme_count[t['id']] >= per_theme)}",
                     file=sys.stderr,
                 )
-            if not cheap_csv_predicate(row, rare_themes, tax):
+            try:
+                canonical = cheap_csv_predicate(row, rare_themes, tax)
+                if canonical is None:
+                    continue
+                # Keep the row only if it still helps some carried theme —
+                # counters credit every theme a puzzle carries (the backfill
+                # pass fills by any appearance too), so the gate must look
+                # at all of them, not just the primary.
+                if all(per_theme_count[t] >= per_theme for t in canonical):
+                    continue
+                if row["PuzzleId"] in seen_ids:
+                    continue
+                p = row_to_puzzle(row, canonical)
+            except ROW_PARSE_ERRORS:
+                malformed += 1
                 continue
-            canonical = tax.canonical(row["Themes"].split())
-            primary = canonical[0]
-            # Theme quota met? Skip.
-            if per_theme_count[primary] >= per_theme:
-                continue
-            p = row_to_puzzle(row, canonical)
             if p is None:
                 continue
             if not validate_solution(p.fen, p.setup_move, p.moves_uci):
                 continue
             chunk.append(p)
+            seen_ids.add(p.id)
             for t in p.themes:
                 per_theme_count[t] += 1
             kept += 1
@@ -400,14 +441,15 @@ def stream(
                     file=sys.stderr,
                 )
                 chunk = []
-            # Early exit: all themes met quota.
-            if all(
-                per_theme_count[t["id"]] >= per_theme
-                for t in tax.themes
-                if theme_counter.get(t["id"], 0) > 0 or t["id"] in ("famous",)
-            ):
+            # Early exit: all CSV-fillable themes met quota.
+            if all_quotas_met():
                 print("[2/2] all themes full, stopping early", file=sys.stderr)
                 break
+    if malformed:
+        print(
+            f"[2/2] WARNING: skipped {malformed} malformed rows",
+            file=sys.stderr,
+        )
 
     if chunk:
         flush_chunk(conn, chunk, theme_frequency, tax)
@@ -429,25 +471,25 @@ def stream(
             f"[3/3] backfill needed for {sorted(under)}, re-scanning",
             file=sys.stderr,
         )
-        seen_ids: set[str] = set()
-        for (pid,) in conn.execute("SELECT id FROM puzzles"):
-            seen_ids.add(pid)
-        with lichess_csv.open() as fh:
+        with lichess_csv.open(encoding="utf-8", newline="") as fh:
             reader = csv.DictReader(fh)
             chunk = []
             for row in reader:
-                pid = row["PuzzleId"]
-                if pid in seen_ids:
+                try:
+                    pid = row["PuzzleId"]
+                    if pid in seen_ids:
+                        continue
+                    tags = row["Themes"].split()
+                    canonical = tax.canonical(tags)
+                    if not canonical:
+                        continue
+                    # Include if ANY of the puzzle's themes is currently
+                    # below quota.
+                    if not any(t in under for t in canonical):
+                        continue
+                    p = row_to_puzzle(row, canonical)
+                except ROW_PARSE_ERRORS:
                     continue
-                tags = row["Themes"].split()
-                canonical = tax.canonical(tags)
-                if not canonical:
-                    continue
-                # Include if ANY of the puzzle's themes is currently below
-                # quota.
-                if not any(t in under for t in canonical):
-                    continue
-                p = row_to_puzzle(row, canonical)
                 if p is None:
                     continue
                 if not validate_solution(p.fen, p.setup_move, p.moves_uci):
@@ -478,8 +520,14 @@ def stream(
                     file=sys.stderr,
                 )
 
-    # Finalize.
-    source_hash = source_hash_of(lichess_csv, famous_json or Path("/dev/null"))
+    # Finalize. The hash covers every input that shaped the corpus —
+    # including the taxonomy, which changes bucketing and theme mapping.
+    hash_inputs = [lichess_csv]
+    if famous_json is not None and famous_json.exists():
+        hash_inputs.append(famous_json)
+    if themes_path is not None:
+        hash_inputs.append(themes_path)
+    source_hash = source_hash_of(*hash_inputs)
     n = finalize(conn, tax, version, source_hash, theme_frequency)
     conn.close()
 
@@ -520,6 +568,7 @@ def main() -> int:
         args.chunk_size,
         args.coverage_out,
         args.version,
+        themes_path=args.themes,
     )
     print(f"done — {n} puzzles in {args.out}", file=sys.stderr)
     return 0

@@ -48,11 +48,28 @@ void main() {
         final idx = sampleWithFloor([0.95, 0.01], rng, floor: 0.05);
         if (idx == 1) strong++;
       }
-      // floor=0.05 over 2 items means each gets at least 0.025 share, so
-      // ≥~100 picks expected out of 5000.
-      expect(strong, greaterThan(50), reason: 'floor should protect strong');
+      // floor=0.05 is per item, so the strong theme gets at least a 5%
+      // share: ≥~250 picks expected out of 5000.
+      expect(strong, greaterThan(150), reason: 'floor should protect strong');
       expect(strong, lessThan(1500),
           reason: 'weak theme should still dominate');
+    });
+
+    test('empty weights throw instead of silently returning', () {
+      expect(() => sampleWithFloor([], math.Random(0)),
+          throwsA(isA<ArgumentError>()));
+    });
+
+    test('floor larger than 1/n degrades toward uniform, stays valid', () {
+      final rng = math.Random(4);
+      final counts = [0, 0, 0];
+      for (var i = 0; i < 3000; i++) {
+        counts[sampleWithFloor([0.9, 0.1, 0.1], rng, floor: 0.5)]++;
+      }
+      // Effective floor caps at 1/3, so the distribution is uniform.
+      for (final c in counts) {
+        expect(c, inInclusiveRange(800, 1200));
+      }
     });
 
     test('equal weights → ~uniform', () {

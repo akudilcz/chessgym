@@ -52,7 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ListTile(
                   title: const Text('Auto-advance after puzzle'),
                   subtitle: Text(_autoAdvanceLabel(
-                      p.getInt(Prefs.kAutoAdvanceMs, defaultValue: 10400))),
+                      p.getInt(Prefs.kAutoAdvanceMs, defaultValue: Prefs.kAutoAdvanceDefaultMs))),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showAutoAdvanceDialog(p),
                 ),
@@ -104,7 +104,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showAutoAdvanceDialog(Prefs p) async {
-    final current = p.getInt(Prefs.kAutoAdvanceMs, defaultValue: 10400);
+    final current = p.getInt(Prefs.kAutoAdvanceMs, defaultValue: Prefs.kAutoAdvanceDefaultMs);
     final choice = await showDialog<int>(
       context: context,
       builder: (_) => SimpleDialog(

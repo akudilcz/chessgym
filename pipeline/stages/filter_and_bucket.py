@@ -72,16 +72,24 @@ def stratified_sample(
     For each theme, keep up to per_theme_target puzzles. Within a theme, spread
     across rating buckets (most-covered theme wins tiebreaks via highest interest).
     Deterministic given (id, interest).
+
+    Non-Lichess puzzles (famous positions, studies) bypass sampling entirely:
+    they are few, hand-curated, and must always land — matching both
+    quality_filter above and the streaming entry point's guarantee.
     """
+    chosen_ids: set[str] = set()
+    chosen: list[Puzzle] = []
+    for p in puzzles:
+        if p.origin_kind != "lichess" and p.id not in chosen_ids:
+            chosen.append(p)
+            chosen_ids.add(p.id)
+
     # Group by primary theme.
     by_theme: dict[str, list[Puzzle]] = defaultdict(list)
     for p in puzzles:
-        if not p.themes:
+        if p.origin_kind != "lichess" or not p.themes:
             continue
         by_theme[p.themes[0]].append(p)
-
-    chosen_ids: set[str] = set()
-    chosen: list[Puzzle] = []
     # Running count of picks per (theme, rating bucket). Recomputing this by
     # scanning `chosen` inside the pick loop makes the stage quadratic: at the
     # README's recommended --per-theme 10000 across 26 themes that is 260k
@@ -110,13 +118,17 @@ def stratified_sample(
                 if per_cell_counts[(theme, bucket)] >= cap:
                     continue
                 p = cell.pop(0)
+                # Consuming a cell entry IS progress, even when the entry
+                # turns out to be a duplicate — otherwise a duplicate at the
+                # head of the only remaining cell would end the round-robin
+                # with fresh puzzles still queued behind it.
+                progressed = True
                 if p.id in chosen_ids:
                     continue
                 chosen.append(p)
                 chosen_ids.add(p.id)
                 per_cell_counts[(theme, bucket)] += 1
                 picks += 1
-                progressed = True
                 if picks >= quota:
                     break
             if not progressed:

@@ -55,11 +55,16 @@ class Glicko2 {
     // [weight] is a fractional game count, so it scales the INFORMATION the
     // attempt carries: the effective variance is v / weight. A zero-weight
     // attempt carries none and must leave rating, deviation and volatility
-    // untouched.
+    // untouched, and a weight above one would fabricate information that
+    // the single attempt does not contain.
     if (weight <= 0.0) return;
+    weight = math.min(weight, 1.0);
 
     final g = _g(phiJ);
-    final expected = _e(_mu, muJ, phiJ);
+    // Clamped away from {0, 1}: at a rating gap of ~6400 the expectation
+    // rounds to exactly 1.0 in doubles, which makes v infinite and delta
+    // NaN, degrading the whole update to a no-op.
+    final expected = _e(_mu, muJ, phiJ).clamp(1e-10, 1.0 - 1e-10);
 
     final v = 1.0 / (g * g * expected * (1.0 - expected));
     final vWeighted = v / weight;

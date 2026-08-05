@@ -29,6 +29,7 @@ class FsrsCard {
   double difficulty; // [1, 10]
   DateTime? lastReview;
   DateTime? due;
+  Rating? lastRating;
   int reps;
   int lapses;
 
@@ -37,11 +38,15 @@ class FsrsCard {
     this.difficulty = 0.0,
     this.lastReview,
     this.due,
+    this.lastRating,
     this.reps = 0,
     this.lapses = 0,
   });
 
-  bool get isNew => reps == 0;
+  /// A card rehydrated from storage may carry reps == 0 (the counter is not
+  /// persisted) but a non-null lastReview; it has history and must not be
+  /// re-initialized, or its accumulated stability is silently discarded.
+  bool get isNew => reps == 0 && lastReview == null;
 }
 
 class Fsrs {
@@ -63,6 +68,7 @@ class Fsrs {
       milliseconds: (interval * 24 * 3600 * 1000).round(),
     ));
     c.lastReview = now;
+    c.lastRating = rating;
     c.reps += 1;
     if (rating == Rating.again) c.lapses += 1;
     return interval;
@@ -85,11 +91,15 @@ class Fsrs {
     // interval and schedules the card a century out.
     c.stability = math.max(c.stability, 0.1);
     final r = _retrievability(elapsedDays, c.stability);
-    c.difficulty = _nextDifficulty(c.difficulty, rating);
+    // Both S' and D' are functions of the PRE-review state (py-fsrs v4
+    // semantics); feeding the already-updated difficulty into the stability
+    // formula systematically underestimates post-lapse stability.
+    final oldD = c.difficulty;
+    c.difficulty = _nextDifficulty(oldD, rating);
     if (rating == Rating.again) {
-      c.stability = _nextForgetStability(c.difficulty, c.stability, r);
+      c.stability = _nextForgetStability(oldD, c.stability, r);
     } else {
-      c.stability = _nextRecallStability(c.difficulty, c.stability, r, rating);
+      c.stability = _nextRecallStability(oldD, c.stability, r, rating);
     }
   }
 

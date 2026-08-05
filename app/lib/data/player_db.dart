@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS review_queue (
   puzzle_id TEXT PRIMARY KEY,
   stability REAL NOT NULL, difficulty REAL NOT NULL,
   due_at TEXT NOT NULL, last_review TEXT NOT NULL,
-  last_rating INTEGER NOT NULL
+  last_rating INTEGER NOT NULL,
+  reps INTEGER NOT NULL DEFAULT 0,
+  lapses INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS seen_recency (
   puzzle_id TEXT PRIMARY KEY, last_seen TEXT NOT NULL
@@ -107,25 +109,16 @@ CREATE TABLE IF NOT EXISTS seen_recency (
   final Database _db;
   PlayerDb._(this._db);
 
-  /// [puzzlesDbPath] is the on-disk path to the shipped puzzles DB, ATTACHed
-  /// as `pz` so aggregations can JOIN against puzzle_themes in SQL rather
-  /// than marshalling 395k rows into Dart.
-  ///
   /// [playerDbPath] overrides the on-device location of `player.sqlite`.
   /// Tests pass a temp path so the schema, the idempotent migrations and the
   /// inactivity decay below all run for real, rather than being re-declared
   /// (and silently allowed to drift) inside a test file.
   static Future<PlayerDb> open({
-    required String puzzlesDbPath,
     @visibleForTesting String? playerDbPath,
   }) async {
     final path = playerDbPath ??
         p.join((await getApplicationSupportDirectory()).path, 'player.sqlite');
     final db = await databaseFactory.openDatabase(path);
-    // ATTACH before running schema, so everything is visible from the
-    // start. Escaping single-quotes in the path to be safe.
-    final escaped = puzzlesDbPath.replaceAll("'", "''");
-    await db.execute("ATTACH DATABASE '$escaped' AS pz");
     for (final stmt in _schema.split(';')) {
       final s = stmt.trim();
       if (s.isNotEmpty) await db.execute(s);
@@ -135,6 +128,15 @@ CREATE TABLE IF NOT EXISTS seen_recency (
     if (!cols.any((c) => c['name'] == 'solve_duration_ms')) {
       await db.execute(
           'ALTER TABLE attempts ADD COLUMN solve_duration_ms INTEGER');
+    }
+    // Migration: FSRS counters on review_queue (idempotent). Without them a
+    // rehydrated card was indistinguishable from a new one.
+    final rcols = await db.rawQuery('PRAGMA table_info(review_queue)');
+    for (final col in const ['reps', 'lapses']) {
+      if (!rcols.any((c) => c['name'] == col)) {
+        await db.execute(
+            'ALTER TABLE review_queue ADD COLUMN $col INTEGER NOT NULL DEFAULT 0');
+      }
     }
     // Migration: calibration columns on player table.
     final pcols = await db.rawQuery('PRAGMA table_info(player)');
@@ -189,43 +191,49 @@ CREATE TABLE IF NOT EXISTS seen_recency (
 
   static Future<void> _applyInactivityDecay(
       Database db, int periods) async {
-    Future<void> decayRow(String table, Map<String, Object?> row,
-        String? whereId) async {
-      final g = Glicko2(
-        rating: (row['rating'] as num).toDouble(),
-        rd: (row['rd'] as num).toDouble(),
-        volatility: (row['vol'] as num).toDouble(),
-      );
-      for (var i = 0; i < periods; i++) {
-        g.decay();
+    // One transaction across the player row AND every theme row. The player
+    // row's updated_at stamp is what makes the decay idempotent, so a crash
+    // after stamping it but before the theme loop finished would skip the
+    // remaining themes permanently — the next launch sees periods == 0.
+    await db.transaction((txn) async {
+      Future<void> decayRow(String table, Map<String, Object?> row,
+          String? whereId) async {
+        final g = Glicko2(
+          rating: (row['rating'] as num).toDouble(),
+          rd: (row['rd'] as num).toDouble(),
+          volatility: (row['vol'] as num).toDouble(),
+        );
+        for (var i = 0; i < periods; i++) {
+          g.decay();
+        }
+        // Cap at the default initial RD so we don't infinitely inflate.
+        final rd = g.rd.clamp(0.0, 350.0);
+        // Stamping updated_at is what makes the decay idempotent. Without it
+        // the next cold start recomputes the elapsed periods from the same
+        // stale timestamp and decays again — five launches after an eight-day
+        // gap apply eight days of decay five times over.
+        await txn.update(
+          table,
+          {
+            'rating': g.rating,
+            'rd': rd,
+            'vol': g.volatility,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          where: whereId == null ? 'id = 1' : 'theme_id = ?',
+          whereArgs: whereId == null ? null : [whereId],
+        );
       }
-      // Cap at the default initial RD so we don't infinitely inflate.
-      final rd = g.rd.clamp(0.0, 350.0);
-      // Stamping updated_at is what makes the decay idempotent. Without it
-      // the next cold start recomputes the elapsed periods from the same
-      // stale timestamp and decays again — five launches after an eight-day
-      // gap apply eight days of decay five times over.
-      await db.update(
-        table,
-        {
-          'rating': g.rating,
-          'rd': rd,
-          'vol': g.volatility,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        where: whereId == null ? 'id = 1' : 'theme_id = ?',
-        whereArgs: whereId == null ? null : [whereId],
-      );
-    }
 
-    final player = await db.rawQuery(
-        'SELECT rating, rd, vol FROM player WHERE id = 1');
-    if (player.isNotEmpty) await decayRow('player', player.first, null);
-    final themes = await db
-        .rawQuery('SELECT theme_id, rating, rd, vol FROM theme_rating');
-    for (final r in themes) {
-      await decayRow('theme_rating', r, r['theme_id'] as String);
-    }
+      final player = await txn.rawQuery(
+          'SELECT rating, rd, vol FROM player WHERE id = 1');
+      if (player.isNotEmpty) await decayRow('player', player.first, null);
+      final themes = await txn
+          .rawQuery('SELECT theme_id, rating, rd, vol FROM theme_rating');
+      for (final r in themes) {
+        await decayRow('theme_rating', r, r['theme_id'] as String);
+      }
+    });
   }
 
   Future<void> close() => _db.close();
@@ -298,33 +306,49 @@ CREATE TABLE IF NOT EXISTS seen_recency (
   /// state. When step reaches [Calibration.steps] - 1 and this is the
   /// final update, marks done and seeds rating.
   Future<void> advanceCalibration({required bool solved}) async {
-    final (done, step, target) = await calibrationState();
-    if (done) return;
-    final nextTarget =
-        Calibration.nextTarget(currentTarget: target, step: step, solved: solved);
-    final nextStep = step + 1;
-    final finished = nextStep >= Calibration.steps;
-    final now = DateTime.now().toUtc().toIso8601String();
-    await _db.update(
-      'player',
-      {
-        'calibration_done': finished ? 1 : 0,
-        'calibration_step': nextStep,
-        'calibration_target': nextTarget,
-        if (finished) 'rating': nextTarget,
-        if (finished) 'rd': 120.0,
-        'updated_at': now,
-      },
-      where: 'id = 1',
-    );
-    if (finished) {
-      // Seed per-theme ratings too so the first post-calibration PLAY
-      // uses the calibrated level everywhere. RD 120 = fairly confident.
-      // (Existing theme_rating rows would be stale; wipe them.)
-      await _db.delete('theme_rating');
-    }
+    // One transaction: the read-advance-write must not interleave with
+    // another writer, and the finishing pair (rating write + theme wipe) is
+    // only meaningful together — a crash between them would leave the
+    // calibrated rating live next to stale per-theme rows the finish is
+    // documented to remove.
+    await _db.transaction((txn) async {
+      final rows = await txn.rawQuery(
+          'SELECT calibration_done, calibration_step, calibration_target '
+          'FROM player WHERE id = 1');
+      if (rows.isEmpty) return;
+      final r = rows.first;
+      if ((r['calibration_done'] as int) == 1) return;
+      final step = r['calibration_step'] as int;
+      final target = (r['calibration_target'] as num).toDouble();
+      final nextTarget = Calibration.nextTarget(
+          currentTarget: target, step: step, solved: solved);
+      final nextStep = step + 1;
+      final finished = nextStep >= Calibration.steps;
+      final now = DateTime.now().toUtc().toIso8601String();
+      await txn.update(
+        'player',
+        {
+          'calibration_done': finished ? 1 : 0,
+          'calibration_step': nextStep,
+          'calibration_target': nextTarget,
+          if (finished) 'rating': nextTarget,
+          if (finished) 'rd': 120.0,
+          'updated_at': now,
+        },
+        where: 'id = 1',
+      );
+      if (finished) {
+        // Seed per-theme ratings too so the first post-calibration PLAY
+        // uses the calibrated level everywhere. RD 120 = fairly confident.
+        // (Existing theme_rating rows would be stale; wipe them.)
+        await txn.delete('theme_rating');
+      }
+    });
   }
 
+  /// Test seeding only. Production writes go through [commitResolution],
+  /// which commits the attempt atomically with the rating and schedule.
+  @visibleForTesting
   Future<void> recordAttempt({
     required String puzzleId,
     required String outcome,
@@ -332,22 +356,22 @@ CREATE TABLE IF NOT EXISTS seen_recency (
     required double ratingDeltaGlobal,
     required int? solveDurationMs,
   }) async {
-    await _db.insert('attempts', {
-      'puzzle_id': puzzleId,
-      'resolved_at': DateTime.now().toUtc().toIso8601String(),
-      'outcome': outcome,
-      'first_wrong_move_uci': firstWrongMoveUci,
-      'rating_delta_global': ratingDeltaGlobal,
-      'solve_duration_ms': solveDurationMs,
-    });
-    await _db.insert(
-      'seen_recency',
-      {
+    await _db.transaction((txn) async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await txn.insert('attempts', {
         'puzzle_id': puzzleId,
-        'last_seen': DateTime.now().toUtc().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+        'resolved_at': now,
+        'outcome': outcome,
+        'first_wrong_move_uci': firstWrongMoveUci,
+        'rating_delta_global': ratingDeltaGlobal,
+        'solve_duration_ms': solveDurationMs,
+      });
+      await txn.insert(
+        'seen_recency',
+        {'puzzle_id': puzzleId, 'last_seen': now},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 
   /// Single-pass aggregate over the attempts table.
@@ -426,6 +450,15 @@ CREATE TABLE IF NOT EXISTS seen_recency (
 
   Future<int> totalAttemptsCount() async {
     final row = await _db.rawQuery('SELECT COUNT(*) AS n FROM attempts');
+    return row.first['n'] as int;
+  }
+
+  /// Distinct puzzles the player has ever attempted. The clear-rate
+  /// denominator: NOT totalSolved + missedCount, because a puzzle solved
+  /// once whose most recent attempt failed appears in both of those sets.
+  Future<int> distinctSeenCount() async {
+    final row = await _db
+        .rawQuery('SELECT COUNT(DISTINCT puzzle_id) AS n FROM attempts');
     return row.first['n'] as int;
   }
 
@@ -512,35 +545,31 @@ CREATE TABLE IF NOT EXISTS seen_recency (
   /// One-row review lookup for [puzzleId]. Replaces full-table
   /// loadReviewQueue() in the hot finish-puzzle path so a 1-row query
   /// doesn't marshal the whole review set.
-  Future<FsrsCard?> reviewFor(String puzzleId) async {
-    final rows = await _db.rawQuery(
-      'SELECT stability, difficulty, due_at, last_review FROM review_queue '
-      'WHERE puzzle_id = ? LIMIT 1',
-      [puzzleId],
-    );
-    if (rows.isEmpty) return null;
-    final r = rows.first;
-    return FsrsCard(
-      stability: (r['stability'] as num).toDouble(),
-      difficulty: (r['difficulty'] as num).toDouble(),
-      due: DateTime.parse(r['due_at'] as String),
-      lastReview: DateTime.parse(r['last_review'] as String),
-    );
-  }
-
-  Future<Map<String, FsrsCard>> loadReviewQueue() async {
-    final rows = await _db.rawQuery('SELECT * FROM review_queue');
-    final out = <String, FsrsCard>{};
-    for (final r in rows) {
-      final c = FsrsCard(
+  static FsrsCard _cardFromRow(Map<String, Object?> r) => FsrsCard(
         stability: (r['stability'] as num).toDouble(),
         difficulty: (r['difficulty'] as num).toDouble(),
         due: DateTime.parse(r['due_at'] as String),
         lastReview: DateTime.parse(r['last_review'] as String),
+        lastRating:
+            Rating.values[((r['last_rating'] as int? ?? 1) - 1).clamp(0, 3)],
+        reps: r['reps'] as int? ?? 0,
+        lapses: r['lapses'] as int? ?? 0,
       );
-      out[r['puzzle_id'] as String] = c;
-    }
-    return out;
+
+  Future<FsrsCard?> reviewFor(String puzzleId) async {
+    final rows = await _db.rawQuery(
+      'SELECT * FROM review_queue WHERE puzzle_id = ? LIMIT 1',
+      [puzzleId],
+    );
+    if (rows.isEmpty) return null;
+    return _cardFromRow(rows.first);
+  }
+
+  Future<Map<String, FsrsCard>> loadReviewQueue() async {
+    final rows = await _db.rawQuery('SELECT * FROM review_queue');
+    return {
+      for (final r in rows) r['puzzle_id'] as String: _cardFromRow(r),
+    };
   }
 
   /// Commit everything a resolved puzzle changes, atomically.
@@ -619,6 +648,8 @@ CREATE TABLE IF NOT EXISTS seen_recency (
                 .toUtc()
                 .toIso8601String(),
             'last_rating': reviewRating,
+            'reps': reviewCard.reps,
+            'lapses': reviewCard.lapses,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );

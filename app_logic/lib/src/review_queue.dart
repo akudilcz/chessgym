@@ -1,5 +1,21 @@
 import 'fsrs.dart';
 
+/// True when a card graduates out of the review queue: two consecutive
+/// Good-or-better outcomes with stability past 21 days (design/sr.md).
+/// Shared by [ReviewQueue] and the app's solve-resolution path so the rule
+/// cannot drift between them.
+bool graduatesReview({
+  required Rating rating,
+  required Rating? previousRating,
+  required double stability,
+}) {
+  const good = [Rating.good, Rating.easy];
+  return good.contains(rating) &&
+      previousRating != null &&
+      good.contains(previousRating) &&
+      stability > 21.0;
+}
+
 /// A tiny wrapper: pop the most-overdue card, apply the solve-outcome
 /// rating, and reschedule. See specs/progression.md for the outcome mapping.
 class ReviewQueue {
@@ -10,8 +26,15 @@ class ReviewQueue {
 
   ReviewQueue({required this.fsrs, this.sessionCap = 10});
 
-  /// Add a new failure (first exposure).
+  /// Add a new failure. If the card is already scheduled, this is a lapse of
+  /// an existing card, not a first exposure — rate it Again in place rather
+  /// than replacing it, which would erase its accumulated FSRS history.
   void onFirstFailure(String puzzleId, DateTime now) {
+    final existing = cards[puzzleId];
+    if (existing != null) {
+      fsrs.review(existing, Rating.again, now);
+      return;
+    }
     final c = FsrsCard();
     fsrs.review(c, Rating.again, now);
     cards[puzzleId] = c;
@@ -39,10 +62,14 @@ class ReviewQueue {
   }) {
     final c = cards[puzzleId];
     if (c == null) return;
+    final previous = c.lastRating;
     fsrs.review(c, rating, now);
     servedThisSession += 1;
-    // Completion: two consecutive Goods with stability > 21.
-    if (rating == Rating.good && c.stability > 21.0 && c.reps >= 3) {
+    if (graduatesReview(
+      rating: rating,
+      previousRating: previous,
+      stability: c.stability,
+    )) {
       cards.remove(puzzleId);
     }
   }

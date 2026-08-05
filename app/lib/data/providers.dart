@@ -2,7 +2,6 @@ import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/puzzle.dart';
-// ignore: unused_import
 import 'player_db.dart';
 import 'prefs.dart';
 import 'progress_service.dart';
@@ -20,10 +19,7 @@ final puzzleDbProvider = FutureProvider<PuzzleDb>((ref) async {
 });
 
 final playerDbProvider = FutureProvider<PlayerDb>((ref) async {
-  // PlayerDb ATTACHes the puzzles DB to run aggregation JOINs
-  // server-side, so it needs the puzzles DB on disk first.
-  final pz = await ref.watch(puzzleDbProvider.future);
-  final db = await PlayerDb.open(puzzlesDbPath: pz.path);
+  final db = await PlayerDb.open();
   ref.onDispose(db.close);
   return db;
 });
@@ -57,24 +53,3 @@ final journeyProvider = FutureProvider<JourneySnapshot>((ref) async {
   return svc.snapshot();
 });
 
-final nextPuzzleProvider = FutureProvider.family<Puzzle?, String?>(
-  (ref, themeId) async {
-    final svc = await ref.watch(selectionServiceProvider.future);
-    // Share the dashboard's journey snapshot rather than letting pickNext
-    // recompute it: the snapshot is expensive and runs on the UI isolate.
-    final snap = await ref.watch(journeyProvider.future);
-    return svc.pickNext(
-      themeFocus: themeId,
-      now: DateTime.now(),
-      snapshot: snap,
-    );
-  },
-);
-
-/// Deterministic daily puzzle for today's date.
-final dailyPuzzleProvider = FutureProvider<Puzzle?>((ref) async {
-  final db = await ref.watch(puzzleDbProvider.future);
-  final now = DateTime.now();
-  final date = DateTime.utc(now.year, now.month, now.day);
-  return db.dailyFor(date);
-});

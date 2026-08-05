@@ -104,7 +104,6 @@ class TestHarness {
 
     final puzzleDb = await PuzzleDb.openAt(corpusPath);
     final playerDb = await PlayerDb.open(
-      puzzlesDbPath: corpusPath,
       playerDbPath: p.join(dir.path, 'player.sqlite'),
     );
     final prefs = await Prefs.instance();
@@ -128,7 +127,7 @@ class TestHarness {
   /// this a value written by one test would leak into the next.
   Future<void> resetPrefs() async {
     await prefs.setBool(Prefs.kHapticsOn, true);
-    await prefs.setInt(Prefs.kAutoAdvanceMs, 10400);
+    await prefs.setInt(Prefs.kAutoAdvanceMs, Prefs.kAutoAdvanceDefaultMs);
     await prefs.setBool(Prefs.kOnboardingSeen, false);
   }
 

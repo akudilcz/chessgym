@@ -36,6 +36,11 @@ def _validate_one(p: Puzzle) -> str | None:
         board = chess.Board(p.fen)
     except ValueError as e:
         return f"invalid FEN: {e}"
+    # chess.Board() only rejects FEN syntax; adjacent kings, a missing king
+    # or an impossible check all parse fine. A typo'd famous position would
+    # otherwise ship a board the app's dartchess layer may choke on.
+    if not board.is_valid():
+        return f"illegal position: {board.status()!r}"
     if p.setup_move:
         try:
             mv = chess.Move.from_uci(p.setup_move)

@@ -80,6 +80,28 @@ void main() {
       expect(bDelta, greaterThan(0));
     });
 
+    test('an extreme rating gap stays finite and still moves the rating', () {
+      // At a gap of ~6400+ the win expectation rounds to exactly 1.0 in
+      // doubles; unclamped, that makes v infinite and the update a no-op.
+      final g = Glicko2(rating: 9000, rd: 80, volatility: 0.06);
+      g.update(opponentRating: 600, opponentRd: 50, score: 0.0);
+      expect(g.rating.isFinite, isTrue);
+      expect(g.rd.isFinite, isTrue);
+      expect(g.volatility.isFinite, isTrue);
+      expect(g.rating, lessThan(9000.0),
+          reason: 'losing to a far weaker opponent must cost rating');
+    });
+
+    test('weight above one is clamped — no fabricated information', () {
+      final full = Glicko2(rating: 1500, rd: 200, volatility: 0.06);
+      final over = Glicko2(rating: 1500, rd: 200, volatility: 0.06);
+      full.update(opponentRating: 1500, opponentRd: 50, score: 1.0);
+      over.update(
+          opponentRating: 1500, opponentRd: 50, score: 1.0, weight: 5.0);
+      expect(over.rating, closeTo(full.rating, 1e-9));
+      expect(over.rd, closeTo(full.rd, 1e-9));
+    });
+
     test('Glickman (2013) example: rating moves in expected direction', () {
       // Glickman worked example: player 1500/200, opponents with mixed results.
       final g = Glicko2(rating: 1500, rd: 200, volatility: 0.06);

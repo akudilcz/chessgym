@@ -1,147 +1,163 @@
+import 'package:chesspuzzle/data/player_db.dart';
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-// These tests exercise the SQL schema and ConflictAlgorithm behavior used
-// by PlayerDb. They avoid path_provider (which needs Flutter channels) by
-// hitting an in-memory sqflite_common_ffi database directly.
+import 'support/harness.dart';
 
-const _schema = '''
-CREATE TABLE player (
-  id INTEGER PRIMARY KEY CHECK(id = 1),
-  rating REAL NOT NULL, rd REAL NOT NULL, vol REAL NOT NULL,
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-  board_flipped_default INTEGER NOT NULL DEFAULT 0,
-  sound_on INTEGER NOT NULL DEFAULT 1,
-  high_contrast INTEGER NOT NULL DEFAULT 0,
-  piece_set TEXT NOT NULL DEFAULT 'cburnett',
-  reduced_motion INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE theme_rating (
-  theme_id TEXT PRIMARY KEY,
-  rating REAL NOT NULL, rd REAL NOT NULL, vol REAL NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE attempts (
-  puzzle_id TEXT NOT NULL, resolved_at TEXT NOT NULL,
-  outcome TEXT NOT NULL, first_wrong_move_uci TEXT,
-  rating_delta_global REAL NOT NULL,
-  PRIMARY KEY (puzzle_id, resolved_at)
-);
+// These tests drive the REAL PlayerDb — its schema, migrations and
+// transactional writes — over temp files via TestHarness. An earlier version
+// re-declared the schema by hand inside this file, which let the two drift
+// apart and hid a bug where FSRS review state was never fully persisted.
+
+void main() {
+  initSqfliteForTests();
+
+  late TestHarness h;
+  setUp(() async => h = await TestHarness.create());
+  tearDown(() async => h.dispose());
+
+  Future<void> commit({
+    required String puzzleId,
+    required String outcome,
+    FsrsCard? reviewCard,
+    int reviewRating = 1,
+    bool clearReview = false,
+  }) {
+    return h.playerDb.commitResolution(
+      global: Glicko2(rating: 1210, rd: 300, volatility: 0.06),
+      themeRatings: {'fork': Glicko2(rating: 1180, rd: 320, volatility: 0.06)},
+      puzzleId: puzzleId,
+      outcome: outcome,
+      firstWrongMoveUci: outcome == 'failed' ? 'e2e3' : null,
+      ratingDeltaGlobal: outcome == 'solved' ? 8.0 : -6.0,
+      solveDurationMs: 4200,
+      reviewCard: reviewCard,
+      reviewRating: reviewRating,
+      clearReview: clearReview,
+    );
+  }
+
+  test('commitResolution records attempts for both outcomes', () async {
+    await commit(puzzleId: 'a', outcome: 'solved');
+    await commit(puzzleId: 'b', outcome: 'failed');
+    final agg = await h.playerDb.aggregateAttempts(
+      {
+        'a': ['fork'],
+        'b': ['fork'],
+      },
+      recentWindowPerTheme: 10,
+    );
+    expect(agg.solvedByTheme['fork'], 1);
+    expect(agg.attemptedByTheme['fork'], 2);
+  });
+
+  test('review card round-trips with its full FSRS state', () async {
+    final fsrs = Fsrs();
+    final card = FsrsCard();
+    fsrs.review(card, Rating.again, DateTime.utc(2026, 1, 1));
+    fsrs.review(card, Rating.good, DateTime.utc(2026, 1, 3));
+    await commit(
+      puzzleId: 'p1',
+      outcome: 'solved',
+      reviewCard: card,
+      reviewRating: ratingToInt(Rating.good),
+    );
+
+    final loaded = await h.playerDb.reviewFor('p1');
+    expect(loaded, isNotNull);
+    expect(loaded!.stability, closeTo(card.stability, 1e-9));
+    expect(loaded.difficulty, closeTo(card.difficulty, 1e-9));
+    expect(loaded.reps, card.reps);
+    expect(loaded.lapses, card.lapses);
+    expect(loaded.lastRating, Rating.good);
+    // The load-bearing property: a rehydrated card must NOT look new, or
+    // the next review re-initializes it and the interval never grows.
+    expect(loaded.isNew, isFalse);
+    fsrs.review(loaded, Rating.good, DateTime.utc(2026, 1, 20));
+    expect(loaded.stability, greaterThan(card.stability));
+  });
+
+  test('clearReview removes the card; upsert keeps a single row', () async {
+    final card = FsrsCard();
+    Fsrs().review(card, Rating.again, DateTime.utc(2026, 1, 1));
+    await commit(puzzleId: 'p1', outcome: 'failed', reviewCard: card);
+    await commit(
+      puzzleId: 'p1',
+      outcome: 'solved',
+      reviewCard: card,
+      reviewRating: ratingToInt(Rating.good),
+    );
+    expect((await h.playerDb.loadReviewQueue()).length, 1);
+    await commit(puzzleId: 'p1', outcome: 'solved', clearReview: true);
+    expect(await h.playerDb.reviewFor('p1'), isNull);
+  });
+
+  test('reset wipes attempts, queue and re-enters calibration', () async {
+    final card = FsrsCard();
+    Fsrs().review(card, Rating.again, DateTime.utc(2026, 1, 1));
+    await commit(puzzleId: 'p1', outcome: 'failed', reviewCard: card);
+    await h.playerDb.reset();
+    expect(await h.playerDb.loadReviewQueue(), isEmpty);
+    final (done, step, target) = await h.playerDb.calibrationState();
+    expect(done, isFalse);
+    expect(step, 0);
+    expect(target, 1200.0);
+    final g = await h.playerDb.globalRating();
+    expect(g.rating, 1200.0);
+    expect(g.rd, 350.0);
+  });
+
+  test('advanceCalibration walks the binary search and finishes atomically',
+      () async {
+    // Fresh install: calibration is pending.
+    var (done, step, target) = await h.playerDb.calibrationState();
+    expect(done, isFalse);
+    for (final solved in [true, true, false, true, false]) {
+      await h.playerDb.advanceCalibration(solved: solved);
+    }
+    (done, step, target) = await h.playerDb.calibrationState();
+    expect(done, isTrue);
+    expect(step, 5);
+    // 1200 +300 +300 -200 +100 -50 = 1650.
+    expect(target, 1650.0);
+    final g = await h.playerDb.globalRating();
+    expect(g.rating, 1650.0);
+    expect(g.rd, 120.0);
+    // Finishing wipes stale per-theme ratings.
+    expect(await h.playerDb.allThemeRatings(), isEmpty);
+  });
+
+  test('opening a pre-reps database migrates review_queue in place', () async {
+    final path = p.join(h.dir.path, 'legacy_player.sqlite');
+    final db = await databaseFactory.openDatabase(path);
+    await db.execute('''
 CREATE TABLE review_queue (
   puzzle_id TEXT PRIMARY KEY,
   stability REAL NOT NULL, difficulty REAL NOT NULL,
   due_at TEXT NOT NULL, last_review TEXT NOT NULL,
   last_rating INTEGER NOT NULL
-);
-CREATE TABLE seen_recency (
-  puzzle_id TEXT PRIMARY KEY, last_seen TEXT NOT NULL
-);
-''';
-
-void main() {
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
-
-  Future<Database> freshDb() async {
-    final db = await databaseFactory.openDatabase(inMemoryDatabasePath,
-        options: OpenDatabaseOptions(version: 1));
-    for (final stmt in _schema.split(';')) {
-      final s = stmt.trim();
-      if (s.isNotEmpty) await db.execute(s);
-    }
-    final now = DateTime.now().toUtc().toIso8601String();
-    await db.insert('player', {
-      'id': 1, 'rating': 800.0, 'rd': 350.0, 'vol': 0.06,
-      'created_at': now, 'updated_at': now,
-    });
-    return db;
-  }
-
-  test('attempts table records both outcomes', () async {
-    final db = await freshDb();
-    await db.insert('attempts', {
-      'puzzle_id': 'a',
-      'resolved_at': '2026-01-01T00:00:00Z',
-      'outcome': 'solved',
-      'first_wrong_move_uci': null,
-      'rating_delta_global': 8.0,
-    });
-    await db.insert('attempts', {
-      'puzzle_id': 'b',
-      'resolved_at': '2026-01-01T00:00:01Z',
-      'outcome': 'failed',
-      'first_wrong_move_uci': 'e2e3',
-      'rating_delta_global': -6.0,
-    });
-    final rows = await db.query('attempts', orderBy: 'resolved_at');
-    expect(rows.length, 2);
-    expect(rows[0]['outcome'], 'solved');
-    expect(rows[1]['outcome'], 'failed');
-    await db.close();
-  });
-
-  test('review_queue upsert replaces on conflict', () async {
-    final db = await freshDb();
-    Future<void> upsert(FsrsCard c, int rating) => db.insert(
-          'review_queue',
-          {
-            'puzzle_id': 'p1',
-            'stability': c.stability,
-            'difficulty': c.difficulty,
-            'due_at': (c.due ?? DateTime.now()).toIso8601String(),
-            'last_review':
-                (c.lastReview ?? DateTime.now()).toIso8601String(),
-            'last_rating': rating,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-    final c = FsrsCard();
-    Fsrs().review(c, Rating.again, DateTime.utc(2026, 1, 1));
-    await upsert(c, 1);
-    // "Continue" the same card — reviewing as Good at a later date should
-    // upsert-replace the single row (PRIMARY KEY on puzzle_id).
-    Fsrs().review(c, Rating.good, DateTime.utc(2026, 1, 5));
-    await upsert(c, 3);
-    final rows = await db.query('review_queue', where: 'puzzle_id = ?', whereArgs: ['p1']);
-    expect(rows.length, 1);
-    expect(rows.first['last_rating'], 3);
-    await db.close();
-  });
-
-  test('removing a review empties the queue', () async {
-    final db = await freshDb();
+)''');
     await db.insert('review_queue', {
-      'puzzle_id': 'x',
-      'stability': 1.0,
-      'difficulty': 5.0,
-      'due_at': '2026-01-01T00:00:00Z',
+      'puzzle_id': 'legacy',
+      'stability': 3.5,
+      'difficulty': 6.0,
+      'due_at': '2026-01-05T00:00:00Z',
       'last_review': '2026-01-01T00:00:00Z',
       'last_rating': 3,
     });
-    await db.delete('review_queue', where: 'puzzle_id = ?', whereArgs: ['x']);
-    final rows = await db.query('review_queue');
-    expect(rows, isEmpty);
     await db.close();
-  });
 
-  test('reset wipes all player state', () async {
-    final db = await freshDb();
-    await db.insert('attempts', {
-      'puzzle_id': 'a', 'resolved_at': 't',
-      'outcome': 'solved', 'first_wrong_move_uci': null,
-      'rating_delta_global': 1.0,
-    });
-    await db.insert('review_queue', {
-      'puzzle_id': 'r', 'stability': 1, 'difficulty': 5,
-      'due_at': 't', 'last_review': 't', 'last_rating': 1,
-    });
-    await db.delete('attempts');
-    await db.delete('review_queue');
-    expect((await db.query('attempts')), isEmpty);
-    expect((await db.query('review_queue')), isEmpty);
-    await db.close();
+    final legacy = await PlayerDb.open(playerDbPath: path);
+    addTearDown(legacy.close);
+    final card = await legacy.reviewFor('legacy');
+    expect(card, isNotNull);
+    expect(card!.stability, closeTo(3.5, 1e-9));
+    expect(card.reps, 0);
+    expect(card.lapses, 0);
+    expect(card.lastRating, Rating.good);
+    expect(card.isNew, isFalse,
+        reason: 'a migrated card has history and must not be re-initialized');
   });
 }

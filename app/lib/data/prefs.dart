@@ -70,5 +70,10 @@ class Prefs {
   static const kHapticsOn = 'haptics_on';
   /// Auto-advance delay in milliseconds. 0 = never auto-advance.
   static const kAutoAdvanceMs = 'auto_advance_ms';
+
+  /// Single source of truth for the auto-advance default. Must be one of
+  /// the options offered by the settings dialog, or the dialog opens with
+  /// nothing selected.
+  static const kAutoAdvanceDefaultMs = 10000;
   static const kOnboardingSeen = 'onboarding_seen';
 }

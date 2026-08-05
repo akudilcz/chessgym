@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-// ignore: unused_import
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../domain/puzzle.dart';
 import 'player_db.dart';
@@ -17,8 +17,11 @@ import 'puzzle_db.dart';
 ///   "eventually 100% cleared" goal. The other 95% of the time, explore:
 ///
 ///     1. If the caller passed [themeFocus], restrict to that theme.
-///     2. Otherwise, sample a theme by weakness^alpha (softmax with
-///        probability floor). See design/scoring.md.
+///     2. Otherwise, Thompson-sample a theme: draw from each theme's
+///        (weakness, uncertainty) posterior and take the argmax, so weak
+///        themes dominate while uncertain ones still get explored. The
+///        dashboard's displayed per-theme percentage is a closed-form
+///        softmax approximation of this distribution (progress_service).
 ///     3. Within the theme, pick a puzzle in the player's rating band,
 ///        preferring never-seen puzzles, weighted by interest^2 * recency.
 ///
@@ -31,22 +34,6 @@ class SelectionService {
   final Selection _selection;
   final math.Random _rng;
 
-  /// Softmax concentration over weakness. Higher = steeper skew toward
-  /// weak themes. With 28+ themes on the board, values below ~4 spread
-  /// probability too thin — the "PRIORITY" theme was getting <10% before
-  /// alpha was raised.
-  final double weaknessAlpha;
-
-  /// Per-theme probability floor.
-  final double floorProbability;
-
-  /// The single "PRIORITY" theme (highest weakness) gets a guaranteed slice
-  /// of selection probability. Everything else competes for the remainder
-  /// via softmax. Default 0.45 — roughly every other puzzle comes from
-  /// the theme the dashboard is telling the player to focus on, which
-  /// matches user expectation of what "PRIORITY" means.
-  final double priorityShare;
-
   /// Fraction of puzzles that should be revisits of previously-missed
   /// (and not-yet-cleared) puzzles. Default 5%.
   final double reviewMissedRate;
@@ -55,9 +42,6 @@ class SelectionService {
     this.puzzles,
     this.player, {
     math.Random? rng,
-    this.weaknessAlpha = 5.0,
-    this.floorProbability = 0.02,
-    this.priorityShare = 0.45,
     this.reviewMissedRate = 0.05,
   })  : _rng = rng ?? math.Random(),
         progress = ProgressService(puzzles, player),
@@ -89,11 +73,12 @@ class SelectionService {
       snapshot: snapshot,
       step: step,
     );
-    final top = profile.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    // ignore: avoid_print
-    print('[PICK] total=${swTotal.elapsedMilliseconds}ms '
-        '${top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ')}');
+    if (kDebugMode) {
+      final top = profile.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      debugPrint('[PICK] total=${swTotal.elapsedMilliseconds}ms '
+          '${top.take(6).map((e) => '${e.key}=${e.value}ms').join(' ')}');
+    }
     return out;
   }
 

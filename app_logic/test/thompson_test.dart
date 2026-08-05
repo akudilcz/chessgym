@@ -44,6 +44,16 @@ void main() {
           reason: 'B should win noticeably but not dominate');
     });
 
+    test('empty or mismatched inputs throw in all build modes', () {
+      final rng = math.Random(0);
+      expect(() => thompsonPick(weakness: [], uncertainty: [], rng: rng),
+          throwsA(isA<ArgumentError>()));
+      expect(
+          () => thompsonPick(
+              weakness: [0.5, 0.5], uncertainty: [0.1], rng: rng),
+          throwsA(isA<ArgumentError>()));
+    });
+
     test('over many turns, distribution matches relative weakness', () {
       final rng = math.Random(3);
       final counts = [0, 0, 0, 0];
