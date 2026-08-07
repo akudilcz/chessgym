@@ -10,7 +10,7 @@ It is built for chess players who want focused, distraction-free training: every
 
 Chess Gym is not on any app store — you install the APK directly.
 
-**[⬇ Download the latest APK](https://github.com/akudilcz/chessgym/releases/latest/download/chessgym.apk)** (Android 8.0 / API 26 or newer, ~110 MB — most of it is the offline puzzle database)
+**[⬇ Download the latest APK](https://github.com/akudilcz/chessgym/releases/latest/download/chessgym.apk)** (Android 8.0 / API 26 or newer, ~85 MB — most of it is the offline puzzle database)
 
 1. Open that link **on your phone** (or scan it from the [releases page](https://github.com/akudilcz/chessgym/releases/latest)) and let the download finish.
 2. Tap the downloaded `chessgym.apk` — from the notification, or in **Files → Downloads**.
@@ -18,6 +18,10 @@ Chess Gym is not on any app store — you install the APK directly.
 4. Play Protect may warn that the app is unknown, because it is signed with the project's own key rather than a store key. Choose **Install anyway**.
 
 To update, download the APK again and install it over the top — your rating, history, and review queue are kept. The app never talks to the network, so it will never update itself; check the releases page when you want a newer build.
+
+`chessgym.apk` is the 64-bit ARM build, which is what any phone made in the last decade wants. The
+release also carries `chessgym-armeabi-v7a.apk` (old 32-bit ARM devices) and `chessgym-x86_64.apk`
+(emulators) for the rare case.
 
 Every push to `main` publishes a fresh signed APK to that same link (see `.github/workflows/android-release.yml`), so the download URL never changes.
 

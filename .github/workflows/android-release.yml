@@ -53,19 +53,31 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Build release APK
+      - name: Build release APKs
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          flutter build apk --release \
+          # One APK per ABI instead of a universal one: a universal build
+          # carries all three sets of native libs, ~17 MB of which no single
+          # phone can use.
+          flutter build apk --release --split-per-abi \
             --build-name "$VERSION" \
             --build-number "${{ github.run_number }}"
-          cp build/app/outputs/flutter-apk/app-release.apk build/chessgym.apk
+          OUT=build/app/outputs/flutter-apk
+          # arm64 is every Android phone made in the last decade, so it keeps
+          # the stable `chessgym.apk` name the install link points at.
+          cp "$OUT/app-arm64-v8a-release.apk"   build/chessgym.apk
+          cp "$OUT/app-armeabi-v7a-release.apk" build/chessgym-armeabi-v7a.apk
+          cp "$OUT/app-x86_64-release.apk"      build/chessgym-x86_64.apk
+          ls -l build/*.apk
 
-      - name: Verify the APK is signed with the release key
+      - name: Verify the APKs are signed with the release key
         run: |
           APKSIGNER=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -1)
-          "$APKSIGNER" verify --print-certs build/chessgym.apk
+          for apk in build/*.apk; do
+            echo "== $apk"
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
 
       - name: Publish rolling "latest" release
         if: startsWith(github.ref, 'refs/heads/')
@@ -73,12 +85,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest build/chessgym.apk \
+          gh release create latest \
+            build/chessgym.apk \
+            build/chessgym-armeabi-v7a.apk \
+            build/chessgym-x86_64.apk \
             --title "Chess Gym $VERSION (build ${{ github.run_number }})" \
             --notes "Latest build from \`main\` (commit ${{ github.sha }}).
 
           Install: open this page on your Android phone and tap \`chessgym.apk\`, or go straight to
           https://github.com/${{ github.repository }}/releases/latest/download/chessgym.apk
+
+          \`chessgym.apk\` is the 64-bit ARM build — the right one for any phone made in the last decade.
+          The other two are for 32-bit ARM devices and x86_64 emulators.
 
           Android will ask you to allow installs from your browser the first time."
 
@@ -87,11 +105,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" build/chessgym.apk \
+          gh release create "${{ github.ref_name }}" \
+            build/chessgym.apk \
+            build/chessgym-armeabi-v7a.apk \
+            build/chessgym-x86_64.apk \
             --title "Chess Gym ${{ github.ref_name }}" \
             --generate-notes
 
       - uses: actions/upload-artifact@v4
         with:
           name: chessgym-apk
-          path: app/build/chessgym.apk
+          path: app/build/*.apk
