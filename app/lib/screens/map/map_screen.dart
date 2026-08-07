@@ -7,6 +7,7 @@ import '../../domain/rating_tier.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_number.dart';
 import '../../widgets/live_dot.dart';
+import '../../widgets/motion.dart';
 import '../../widgets/tier_bar.dart';
 import '../settings/settings_screen.dart';
 import '../solve/solve_screen.dart';
@@ -98,41 +99,83 @@ class MapScreen extends ConsumerWidget {
   }
 }
 
-class _PlayButton extends StatelessWidget {
+/// The one button that matters. Its glow breathes so the eye is drawn back
+/// to it, and it squashes under a press.
+class _PlayButton extends StatefulWidget {
   final VoidCallback onPressed;
   const _PlayButton({required this.onPressed});
 
   @override
+  State<_PlayButton> createState() => _PlayButtonState();
+}
+
+class _PlayButtonState extends State<_PlayButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _glow;
+
+  @override
+  void initState() {
+    super.initState();
+    _glow = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _glow.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(4),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: WR.cyan,
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: const [
-              BoxShadow(
-                  color: Color(0x7700E5FF), blurRadius: 24, spreadRadius: 2),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-          child: const Text(
-            'PLAY',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              color: WR.canvas,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 4.0,
-            ),
-          ),
+    const label = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+      child: Text(
+        'PLAY',
+        style: TextStyle(
+          fontFamily: 'monospace',
+          color: WR.canvas,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 4.0,
         ),
       ),
     );
+    // A forever-repeating animation never lets a test settle, and a
+    // reduce-motion user asked for exactly this to stop.
+    final reduced = MediaQuery.of(context).disableAnimations;
+
+    return PressScale(
+      onPressed: widget.onPressed,
+      child: reduced
+          ? _shell(24, 2, label)
+          : AnimatedBuilder(
+              animation: _glow,
+              builder: (context, child) {
+                final t = Curves.easeInOut.transform(_glow.value);
+                return _shell(18 + 14 * t, 1 + 2.5 * t, child!);
+              },
+              child: label,
+            ),
+    );
   }
+
+  Widget _shell(double blur, double spread, Widget child) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: WR.cyan,
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0x7700E5FF),
+              blurRadius: blur,
+              spreadRadius: spread,
+            ),
+          ],
+        ),
+        child: child,
+      );
 }
 
 class _Dashboard extends StatelessWidget {
@@ -270,7 +313,11 @@ class _Dashboard extends StatelessWidget {
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 100),
-      children: children,
+      // Panels assemble top-down rather than all landing at once.
+      children: [
+        for (var i = 0; i < children.length; i++)
+          Entrance(index: i, child: children[i]),
+      ],
     );
   }
 }
