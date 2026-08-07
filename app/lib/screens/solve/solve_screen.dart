@@ -17,6 +17,7 @@ import '../../data/providers.dart';
 import '../../data/puzzle_controller.dart';
 import '../../data/sfx.dart';
 import '../../domain/puzzle.dart';
+import '../../widgets/board_fx.dart';
 import '../../widgets/fast_fade_route.dart';
 import '../post_puzzle/post_puzzle_screen.dart';
 
@@ -62,6 +63,9 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   /// no longer moves the pieces.
   cg.ChessboardController? _board;
 
+  /// Drives the celebration / rejection flourishes drawn over the board.
+  final BoardFxController _fx = BoardFxController();
+
   /// Sound effects. Null until the service resolves; every call site
   /// tolerates that, so a slow first frame is silent rather than broken.
   SfxService? _sfx;
@@ -88,6 +92,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     // The board attaches to the controller but never disposes it; that is
     // the owner's job.
     _board?.dispose();
+    _fx.dispose();
     super.dispose();
   }
 
@@ -305,29 +310,33 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
                   child: Semantics(
                     label: _boardSemanticLabel(ctrl),
                     container: true,
-                    child: cg.Chessboard(
-                    size: boardSize,
-                    orientation: boardSide,
-                    controller: board,
-                    onMove: _onMove,
-                    settings: cg.ChessboardSettings(
-                      // Every other animation in the app honours
-                      // disableAnimations; the board — the one the spec
-                      // names explicitly — did not.
-                      animationDuration:
-                          MediaQuery.of(context).disableAnimations
-                              ? Duration.zero
-                              : _animDuration,
-                      showLastMove: true,
-                      // Support both drag-and-drop and tap-to-select-then-
-                      // tap-destination, so the player can use whichever
-                      // method feels natural on mobile.
-                      pieceShiftMethod: cg.PieceShiftMethod.either,
-                      dragFeedbackScale: 1.1,
-                      // Puzzles are single-player and every reply is
-                      // scripted, so there is nothing to premove against.
-                      enablePremoves: false,
-                    ),
+                    child: BoardFx(
+                      size: boardSize,
+                      controller: _fx,
+                      child: cg.Chessboard(
+                        size: boardSize,
+                        orientation: boardSide,
+                        controller: board,
+                        onMove: _onMove,
+                        settings: cg.ChessboardSettings(
+                          // Every other animation in the app honours
+                          // disableAnimations; the board — the one the spec
+                          // names explicitly — did not.
+                          animationDuration:
+                              MediaQuery.of(context).disableAnimations
+                                  ? Duration.zero
+                                  : _animDuration,
+                          showLastMove: true,
+                          // Support both drag-and-drop and tap-to-select-
+                          // then-tap-destination, so the player can use
+                          // whichever method feels natural on mobile.
+                          pieceShiftMethod: cg.PieceShiftMethod.either,
+                          dragFeedbackScale: 1.1,
+                          // Puzzles are single-player and every reply is
+                          // scripted, so there is nothing to premove against.
+                          enablePremoves: false,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -394,6 +403,27 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
 
   cg.ValidMoves _validMovesOf(Position pos) => makeLegalMoves(pos);
 
+  /// Centre of [square] as a fraction of the board as drawn, so effects
+  /// land on the right square whichever way the board is oriented.
+  Offset _squareCentre(Square square, Side orientation) {
+    final file = orientation == Side.black ? 7 - square.file : square.file;
+    final rank = orientation == Side.black ? square.rank : 7 - square.rank;
+    return Offset((file + 0.5) / 8, (rank + 0.5) / 8);
+  }
+
+  /// Which way the board is facing right now.
+  Side get _orientation =>
+      _puzzle?.sideToMove == 'w' ? Side.white : Side.black;
+
+  /// Bursts from the square the winning move landed on.
+  void _fireSuccessFx() {
+    final last = _ctrl?.lastMove;
+    _fx.fire(
+      BoardFxKind.success,
+      at: last == null ? null : _squareCentre(last.to, _orientation),
+    );
+  }
+
   /// Picks the sound a move deserves: check beats capture beats a plain
   /// move, which is the order a player notices them in.
   void _playMoveSound(Position before, Position after, Move move) {
@@ -442,6 +472,11 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       // to finish plus a beat so the player registers what they did,
       // THEN transition to the post-puzzle screen.
       _giveUpTimer?.cancel();
+      final wrong = _ctrl!.lastMove;
+      _fx.fire(
+        BoardFxKind.failure,
+        at: wrong == null ? null : _squareCentre(wrong.to, _orientation),
+      );
       _sfx?.play(Sfx.fail);
       await _hapticTick(heavy: true);
       // Commit the miss BEFORE the animation beat, not after. Persisting it
@@ -475,6 +510,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
         _playMoveSound(beforeReply, _ctrl!.position, reply);
       }
       if (_ctrl!.state == SolveState.succeeded) {
+        _fireSuccessFx();
         _sfx?.play(Sfx.solve);
         await _finish(
           solved: true,
@@ -492,6 +528,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
 
     // No opponent reply: puzzle complete on the player's move.
     if (_ctrl!.state == SolveState.succeeded) {
+      _fireSuccessFx();
       _sfx?.play(Sfx.solve);
       await _finish(
         solved: true,

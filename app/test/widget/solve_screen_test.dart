@@ -29,11 +29,13 @@ void main() {
   });
   tearDown(() async => h.dispose());
 
-  Future<void> openPuzzle(WidgetTester tester, String id) async {
+  Future<void> openPuzzle(WidgetTester tester, String id,
+      {bool reduceMotion = true}) async {
     await pumpApp(
       tester,
       harness: h,
       home: SolveScreen(specificPuzzleId: id),
+      reduceMotion: reduceMotion,
     );
     await pumpUntil(tester, boardFinder, reason: 'the board to load');
   }
@@ -154,6 +156,34 @@ void main() {
       await pumpUntil(tester, find.byType(PostPuzzleScreen));
 
       expect(find.text('Solved'), findsOneWidget);
+    });
+  });
+
+  group('flourishes', () {
+    // Every other test runs with reduce-motion on, which skips the board
+    // effects entirely — so without these two the burst and the shake are
+    // never executed at all.
+    testWidgets('the solve burst runs without throwing', (tester) async {
+      await openPuzzle(tester, 'p-mate1-w', reduceMotion: false);
+
+      await tapMove(tester, Square.a1, Square.a8);
+      await pumpFrames(tester, frames: 40);
+
+      expect(tester.takeException(), isNull);
+      await pumpUntil(tester, find.byType(PostPuzzleScreen));
+      expect(find.text('Solved'), findsOneWidget);
+    });
+
+    testWidgets('the miss shake runs without throwing', (tester) async {
+      await openPuzzle(tester, 'p-mate1-w', reduceMotion: false);
+
+      // Legal but not mate, so the puzzle fails and the board shakes.
+      await tapMove(tester, Square.a1, Square.a7);
+      await pumpFrames(tester, frames: 40);
+
+      expect(tester.takeException(), isNull);
+      await pumpUntil(tester, find.byType(PostPuzzleScreen));
+      expect(find.text('Missed'), findsOneWidget);
     });
   });
 
