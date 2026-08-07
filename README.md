@@ -33,6 +33,7 @@ Every push to `main` publishes a fresh signed APK to that same link (see `.githu
 - Glicko-2 adaptive rating with inactivity decay, plus per-theme ratings.
 - FSRS spaced-repetition queue that resurfaces failed puzzles on an expanding schedule.
 - No-hint solving with a post-puzzle Analyze mode for stepping through the solution and exploring side lines (legality-validated only; no engine on device).
+- Sound and motion that reward the work: synthesised move/capture/check effects, a particle burst on the mating square, a board shake on a miss, tier-promotion fanfare, and a dashboard that assembles itself — all silenced and stilled by the OS reduce-motion and sound settings.
 - Fully offline and private: no accounts, ads, telemetry, network calls, or in-app purchases.
 - Build-time Python curation pipeline that scores puzzles for "interestingness" and emits a deterministic, versioned `puzzles.sqlite`.
 - Pure-Dart logic package (rating, spaced repetition, selection) testable without Flutter.
@@ -40,7 +41,7 @@ Every push to `main` publishes a fresh signed APK to that same link (see `.githu
 ## Tech stack
 
 - **App:** Flutter (SDK `>=3.41.0`) / Dart (`>=3.9.0 <4.0.0`).
-- **Key app packages:** `dartchess` (move generation/legality), `chessground` (board widget), `sqflite` + `sqflite_common_ffi` (SQLite on mobile and desktop), `flutter_riverpod` (state management), `fast_immutable_collections`, `path_provider`, `crypto`.
+- **Key app packages:** `dartchess` (move generation/legality), `chessground` (board widget), `sqflite` + `sqflite_common_ffi` (SQLite on mobile and desktop), `flutter_riverpod` (state management), `audioplayers` (sound effects), `fast_immutable_collections`, `path_provider`, `crypto`.
 - **Logic package (`app_logic/`):** pure Dart — Glicko-2, FSRS, mastery, weakness, Thompson sampling, selection. Tested with the `test` package.
 - **Pipeline (`pipeline/`):** Python 3 with `python-chess` (FEN/UCI parsing, legality, mate validation) and `pyyaml`; tested with `pytest`. Optional Stockfish validation at pipeline time only.
 
@@ -49,6 +50,7 @@ Every push to `main` publishes a fresh signed APK to that same link (see `.githu
 - **Flutter** `>= 3.41.0` with the Dart SDK that ships with it (Dart `>= 3.9.0`) — for the app and logic package.
 - **Python 3** — for the curation pipeline (pinned deps: `chess==1.11.2`, `pyyaml==6.0.2`, `pytest==8.3.4`).
 - Platform toolchains as needed: Android SDK (`compileSdk`/`targetSdk` 35) for Android builds, GTK3 for the Linux desktop build, Xcode for iOS/macOS.
+- **Linux desktop only:** GStreamer development headers, required by `audioplayers` for the sound effects — `sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev`. Without them `flutter build linux` fails at CMake configure time. Android needs nothing extra.
 - No API keys, GPU, or network access are required to build or run — the puzzle corpus (`app/assets/puzzles/puzzles.sqlite`, ~57 MB) is checked into the repo, so no pipeline run is needed for a first build.
 
 ## Installation
@@ -136,6 +138,7 @@ cd pipeline
 
 - `app/` — the Flutter client. `lib/` holds `domain/`, `data/` (SQLite access, solve controller, selection/progress services, Riverpod providers), `widgets/`, and `screens/` (dashboard, solve, post-puzzle, analyze, settings, onboarding). The shipped corpus lives in `app/assets/puzzles/puzzles.sqlite`. Platform scaffolds: `android/`, `ios/`, `macos/`, `linux/`.
 - `app_logic/` — standalone pure-Dart package with no Flutter dependency (`lib/src/`: `glicko2.dart`, `fsrs.dart`, `selection.dart`, `mastery.dart`, `weakness.dart`, `thompson.dart`, `review_queue.dart`), consumed by the app via a `path:` dependency.
+- `app/tool/gen_sfx.py` — synthesises the bundled sound effects; run it to regenerate `app/assets/sfx/`.
 - `pipeline/` — Python curation pipeline. `run_stream.py` (recommended) and `run.py` orchestrate the `stages/` (`load`, `themes`, `score`, `filter_and_bucket`, `validate`, `emit`). Includes `themes.yaml` taxonomy, `famous_positions.json`, `fetch_inputs.py`, `mock_lichess.py`, and a `tests/` pytest suite.
 - `specs/` — user-facing feature specifications (puzzle experience, dashboard, progression, scoring, data model, offline/privacy, accessibility).
 - `design/` — architecture docs (SQLite schema, pipeline, app runtime, scoring formula, Glicko-2, FSRS).

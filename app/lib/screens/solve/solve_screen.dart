@@ -18,6 +18,7 @@ import '../../data/puzzle_controller.dart';
 import '../../data/sfx.dart';
 import '../../domain/puzzle.dart';
 import '../../widgets/board_fx.dart';
+import '../../widgets/board_skeleton.dart';
 import '../../widgets/fast_fade_route.dart';
 import '../post_puzzle/post_puzzle_screen.dart';
 
@@ -256,7 +257,19 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     final ctrl = _ctrl;
     final board = _board;
     if (puzzle == null || ctrl == null || board == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // A board-shaped skeleton rather than a spinner: same footprint as
+      // the real board, so nothing jumps when the puzzle arrives.
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: LayoutBuilder(
+              builder: (ctx, cons) => BoardSkeleton(
+                size: cons.biggest.shortestSide.clamp(200.0, 520.0),
+              ),
+            ),
+          ),
+        ),
+      );
     }
     final boardSide = puzzle.sideToMove == 'w' ? Side.white : Side.black;
 
