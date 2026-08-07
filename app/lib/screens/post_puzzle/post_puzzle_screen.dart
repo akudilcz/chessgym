@@ -414,7 +414,7 @@ class _AutoAdvanceBarState extends State<_AutoAdvanceBar>
     final scheme = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
+      builder: (_, _) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(2),
           child: LinearProgressIndicator(
@@ -473,7 +473,7 @@ class _AnimatedRatingState extends State<_AnimatedRating>
     final reduced = MediaQuery.of(context).disableAnimations;
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) {
+      builder: (_, _) {
         final t = reduced ? 1.0 : _anim.value;
         final shown = start + widget.delta * t;
         final deltaShown = widget.delta * t;

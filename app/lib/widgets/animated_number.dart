@@ -84,7 +84,7 @@ class _AnimatedNumberState extends State<AnimatedNumber>
     }
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) {
+      builder: (_, _) {
         return Text(
           '${widget.prefix}${_formatted(_currentValue())}${widget.suffix}',
           style: (widget.style ?? const TextStyle()).copyWith(

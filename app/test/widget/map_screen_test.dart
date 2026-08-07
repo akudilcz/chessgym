@@ -153,7 +153,7 @@ void main() {
       // A fresh player is un-calibrated, so selection serves a puzzle at
       // the 1200 calibration target — p-mate1-w is the only one in band.
       expect(find.text('White to move'), findsOneWidget);
-      expect(find.byKey(const ValueKey('a1-whiterook')), findsOneWidget);
+      expectPiece(tester, 'a1-whiterook');
       expect(find.text('D4'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());

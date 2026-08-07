@@ -49,7 +49,7 @@ class _RootState extends ConsumerState<_Root> {
       loading: () => const Scaffold(body: SizedBox.shrink()),
       // A preferences read failure must not lock the player out of the app;
       // fall through to the dashboard and let them play.
-      error: (_, __) => const MapScreen(),
+      error: (_, _) => const MapScreen(),
       data: (prefs) {
         final seen = _needsOnboarding == null
             ? prefs.getBool(Prefs.kOnboardingSeen, defaultValue: false)

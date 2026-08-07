@@ -8,6 +8,10 @@
 // This is NOT part of the shipped app — it's a harness so humans can
 // watch the code work on a machine without Flutter UI support.
 
+// This is a terminal harness, not shipped app code: stdout is its
+// entire user interface, so print is the right call here.
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 import 'dart:math' as math;
 

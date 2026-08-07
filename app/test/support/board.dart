@@ -13,6 +13,38 @@ Finder get boardFinder => find.byType(cg.Chessboard);
 Side boardOrientation(WidgetTester tester) =>
     tester.widget<cg.Chessboard>(boardFinder).orientation;
 
+/// The pieces currently on the board, by square.
+///
+/// Since chessground 10 the board paints pieces onto a canvas instead of
+/// building one keyed widget per square, so `find.byKey('a1-whiterook')`
+/// finds nothing. The controller's piece map is the equivalent — and it is
+/// what the painter itself draws from.
+Map<Square, Piece> boardPieces(WidgetTester tester) =>
+    tester.widget<cg.Chessboard>(boardFinder).controller.pieces;
+
+/// Asserts that [square] holds exactly the piece described by [pieceKey],
+/// written the way chessground used to key them: `'a1-whiterook'`.
+void expectPiece(WidgetTester tester, String pieceKey) {
+  const roles = {
+    'pawn': Role.pawn, 'knight': Role.knight, 'bishop': Role.bishop,
+    'rook': Role.rook, 'queen': Role.queen, 'king': Role.king,
+  };
+  final parts = pieceKey.split('-');
+  final square = Square.fromName(parts[0]);
+  final side = parts[1].startsWith('white') ? Side.white : Side.black;
+  final role = roles[parts[1].replaceFirst(RegExp('^(white|black)'), '')]!;
+  expect(
+    boardPieces(tester)[square],
+    Piece(color: side, role: role),
+    reason: pieceKey,
+  );
+}
+
+/// Asserts that [square] is empty.
+void expectNoPiece(WidgetTester tester, Square square) {
+  expect(boardPieces(tester)[square], isNull, reason: square.name);
+}
+
 /// Centre of [square] in global coordinates.
 Offset squareOffset(WidgetTester tester, Square square, {Side? orientation}) {
   final side = orientation ?? boardOrientation(tester);
@@ -32,7 +64,3 @@ Future<void> tapMove(WidgetTester tester, Square from, Square to) async {
   await tester.tapAt(squareOffset(tester, to, orientation: side));
   await tester.pump();
 }
-
-/// True when the board currently shows [square] as selected.
-bool isSelected(Square square) =>
-    find.byKey(ValueKey('${square.name}-selected')).evaluate().isNotEmpty;

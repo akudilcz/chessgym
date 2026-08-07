@@ -51,7 +51,7 @@ class _LiveDotState extends State<LiveDot>
     }
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
+      builder: (_, _) {
         final t = _ctrl.value;
         return Container(
           width: widget.size,

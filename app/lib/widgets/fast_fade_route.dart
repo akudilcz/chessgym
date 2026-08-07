@@ -11,7 +11,7 @@ class FastFadeRoute<T> extends PageRouteBuilder<T> {
           reverseTransitionDuration: const Duration(milliseconds: 120),
           opaque: true,
           pageBuilder: (ctx, a1, a2) => builder(ctx),
-          transitionsBuilder: (ctx, a, __, child) {
+          transitionsBuilder: (ctx, a, _, child) {
             // Respect the OS reduce-motion setting (specs/accessibility.md
             // — "piece-move animations collapse to instant state changes").
             if (MediaQuery.of(ctx).disableAnimations) return child;

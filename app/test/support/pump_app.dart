@@ -3,6 +3,7 @@ import 'package:chesspuzzle/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'harness.dart';
@@ -120,7 +121,7 @@ Future<void> pumpUntil(
     await tester.pump(step);
   }
   fail('Timed out after $maxFrames frames waiting for '
-      '${reason ?? finder.description}');
+      '${reason ?? finder.describeMatch(Plurality.many)}');
 }
 
 /// Pumps [frames] frames of [step] each. Use instead of `pumpAndSettle`

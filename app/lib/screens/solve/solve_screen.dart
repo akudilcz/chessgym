@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessground/chessground.dart' as cg;
-import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -55,7 +54,12 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   /// solve. A restart resets [_busy] itself, so a superseded continuation
   /// must return without touching it.
   bool _stillCurrent(int generation) => mounted && generation == _generation;
-  NormalMove? _pendingPromotion;
+
+  /// Drives the chessground board. Since chessground 10 the board renders
+  /// from this controller rather than from widget parameters, so every
+  /// position change has to be pushed with [_syncBoard] — a plain setState
+  /// no longer moves the pieces.
+  cg.ChessboardController? _board;
 
   /// Wall clock when the player was first given control of the puzzle.
   /// Used to record solve duration for per-puzzle stats. Excluded from
@@ -76,7 +80,44 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   @override
   void dispose() {
     _giveUpTimer?.cancel();
+    // The board attaches to the controller but never disposes it; that is
+    // the owner's job.
+    _board?.dispose();
     super.dispose();
+  }
+
+  /// Board state for the current controller, as chessground wants it.
+  ///
+  /// [_busy] is folded in here rather than into the widget: with the
+  /// position living in the controller, `PlayerSide.none` is how the board
+  /// is locked while a reply animates or the outcome is being written.
+  cg.GameData _buildGame() {
+    final ctrl = _ctrl!;
+    final turn = ctrl.position.turn;
+    return cg.GameData(
+      fen: ctrl.position.fen,
+      lastMove: ctrl.lastMove,
+      playerSide: _busy
+          ? cg.PlayerSide.none
+          : (turn == Side.white ? cg.PlayerSide.white : cg.PlayerSide.black),
+      sideToMove: turn,
+      validMoves: _validMovesOf(ctrl.position),
+    );
+  }
+
+  /// Push the current position to the board.
+  ///
+  /// [animate] is false when the board jumps rather than moves — a restart,
+  /// or the first position of a freshly loaded puzzle.
+  void _syncBoard({bool animate = true}) {
+    if (_ctrl == null) return;
+    final game = _buildGame();
+    final board = _board;
+    if (board == null) {
+      _board = cg.ChessboardController(game: game);
+    } else {
+      board.updatePosition(game, animate: animate, resetPremove: !animate);
+    }
   }
 
   /// Start (or restart) the 30-second countdown that reveals the Give
@@ -114,11 +155,13 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     setState(() {
       _generation++;
       _ctrl = PuzzleController(puzzle);
-      _pendingPromotion = null;
       _busy = false;
       _solveStart = DateTime.now();
       _canGiveUp = false;
     });
+    // A restart is a jump, not a move — no slide animation, and any pending
+    // premove from the abandoned attempt is dropped.
+    _syncBoard(animate: false);
     _armGiveUpTimer();
   }
 
@@ -184,6 +227,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       _solveStart = DateTime.now();
       _canGiveUp = false;
     });
+    _syncBoard(animate: false);
     _armGiveUpTimer();
   }
 
@@ -191,14 +235,11 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   Widget build(BuildContext context) {
     final puzzle = _puzzle;
     final ctrl = _ctrl;
-    if (puzzle == null || ctrl == null) {
+    final board = _board;
+    if (puzzle == null || ctrl == null || board == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final playerSide = ctrl.position.turn;
     final boardSide = puzzle.sideToMove == 'w' ? Side.white : Side.black;
-    final playerSideEnum = playerSide == Side.white
-        ? cg.PlayerSide.white
-        : cg.PlayerSide.black;
 
     return Scaffold(
       appBar: AppBar(
@@ -253,8 +294,8 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
                     child: cg.Chessboard(
                     size: boardSize,
                     orientation: boardSide,
-                    fen: ctrl.position.fen,
-                    lastMove: ctrl.lastMove,
+                    controller: board,
+                    onMove: _onMove,
                     settings: cg.ChessboardSettings(
                       // Every other animation in the app honours
                       // disableAnimations; the board — the one the spec
@@ -269,14 +310,9 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
                       // method feels natural on mobile.
                       pieceShiftMethod: cg.PieceShiftMethod.either,
                       dragFeedbackScale: 1.1,
-                    ),
-                    game: cg.GameData(
-                      playerSide: _busy ? cg.PlayerSide.none : playerSideEnum,
-                      sideToMove: playerSide,
-                      validMoves: _validMovesOf(ctrl.position),
-                      promotionMove: _pendingPromotion,
-                      onMove: _onMove,
-                      onPromotionSelection: _onPromotionSelection,
+                      // Puzzles are single-player and every reply is
+                      // scripted, so there is nothing to premove against.
+                      enablePremoves: false,
                     ),
                     ),
                   ),
@@ -342,38 +378,13 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     return '$turn to move. ${parts.join(', ')}.';
   }
 
-  IMap<Square, ISet<Square>> _validMovesOf(Position pos) =>
-      makeLegalMoves(pos);
+  cg.ValidMoves _validMovesOf(Position pos) => makeLegalMoves(pos);
 
-  void _onMove(NormalMove move, {bool? isDrop}) {
+  /// The board resolves promotions itself now: it shows the piece selector
+  /// and only calls back once, with [move.promotion] already set.
+  void _onMove(Move move, {bool? viaDragAndDrop}) {
     if (_ctrl == null) return;
-    final pos = _ctrl!.position;
-    final piece = pos.board.pieceAt(move.from);
-    if (piece != null &&
-        piece.role == Role.pawn &&
-        ((piece.color == Side.white && move.to.rank == Rank.eighth) ||
-            (piece.color == Side.black && move.to.rank == Rank.first)) &&
-        move.promotion == null) {
-      setState(() => _pendingPromotion = move);
-      return;
-    }
     _applyMove(move.uci);
-  }
-
-  void _onPromotionSelection(Role? role) {
-    final pending = _pendingPromotion;
-    if (pending == null) {
-      setState(() => _pendingPromotion = null);
-      return;
-    }
-    if (role == null) {
-      setState(() => _pendingPromotion = null);
-      return;
-    }
-    final promoted =
-        NormalMove(from: pending.from, to: pending.to, promotion: role);
-    setState(() => _pendingPromotion = null);
-    _applyMove(promoted.uci);
   }
 
   Future<void> _applyMove(String uci) async {
@@ -386,6 +397,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       return;
     }
     setState(() {});
+    _syncBoard();
 
     if (_ctrl!.state == SolveState.failed) {
       // Wrong move: piece has already landed on its destination (see
@@ -418,6 +430,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       if (!_stillCurrent(generation)) return;
       _ctrl!.applyOpponentReply();
       setState(() {});
+      _syncBoard();
       if (_ctrl!.state == SolveState.succeeded) {
         await _finish(
           solved: true,
@@ -426,8 +439,10 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
         if (mounted) _busy = false;
         return;
       }
-      // Not complete: hand control back to the player.
+      // Not complete: hand control back to the player. The board is locked
+      // via PlayerSide.none while busy, so it needs re-syncing to unlock.
       _busy = false;
+      _syncBoard(animate: false);
       return;
     }
 

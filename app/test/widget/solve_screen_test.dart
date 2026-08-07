@@ -3,7 +3,6 @@ import 'package:chesspuzzle/screens/post_puzzle/post_puzzle_screen.dart';
 import 'package:chesspuzzle/screens/solve/solve_screen.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/board.dart';
@@ -47,7 +46,7 @@ void main() {
       expect(boardFinder, findsOneWidget);
       expect(find.text('White to move'), findsOneWidget);
       // Every piece of the seeded back-rank position, on its own square.
-      for (final key in const [
+      for (final piece in const [
         'a1-whiterook',
         'g1-whiteking',
         'f2-whitepawn',
@@ -58,7 +57,7 @@ void main() {
         'g7-blackpawn',
         'h7-blackpawn',
       ]) {
-        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+        expectPiece(tester, piece);
       }
       // Difficulty badge: rating 1200 → D4 (see difficulty1to10).
       expect(find.text('D4'), findsOneWidget);
@@ -77,8 +76,8 @@ void main() {
       // p-setupmove's FEN has the king on g8 and a setup move Kg8-h8.
       await openPuzzle(tester, 'p-setupmove');
 
-      expect(find.byKey(const ValueKey('h8-blackking')), findsOneWidget);
-      expect(find.byKey(const ValueKey('g8-blackking')), findsNothing);
+      expectPiece(tester, 'h8-blackking');
+      expectNoPiece(tester, Square.g8);
       expect(find.text('White to move'), findsOneWidget);
     });
   });
@@ -147,7 +146,7 @@ void main() {
 
       expect(find.byType(PostPuzzleScreen), findsNothing);
       // Scripted reply Kg8-h7 has been applied for the player to see.
-      expect(find.byKey(const ValueKey('h7-blackking')), findsOneWidget);
+      expectPiece(tester, 'h7-blackking');
 
       // Ply 3: Ra8-a7 finishes it.
       await tapMove(tester, Square.a8, Square.a7);
@@ -165,13 +164,13 @@ void main() {
 
       await tapMove(tester, Square.a1, Square.a8);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byKey(const ValueKey('a8-whiterook')), findsOneWidget);
+      expectPiece(tester, 'a8-whiterook');
 
       await tester.tap(find.byTooltip('Restart puzzle'));
       await pumpFrames(tester, frames: 20);
 
-      expect(find.byKey(const ValueKey('a1-whiterook')), findsOneWidget);
-      expect(find.byKey(const ValueKey('g8-blackking')), findsOneWidget);
+      expectPiece(tester, 'a1-whiterook');
+      expectPiece(tester, 'g8-blackking');
       expect(find.byType(PostPuzzleScreen), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
@@ -218,22 +217,15 @@ void main() {
       final handle = tester.ensureSemantics();
       await openPuzzle(tester, 'p-mate1-w');
 
-      final labels = <String>[];
-      void walk(SemanticsNode node) {
-        if (node.label.isNotEmpty) labels.add(node.label);
-        node.visitChildren((child) {
-          walk(child);
-          return true;
-        });
-      }
-
-      walk(tester.binding.pipelineOwner.semanticsOwner!.rootSemanticsNode!);
-      final board = labels.where((l) => l.contains('to move.'));
-      expect(board, isNotEmpty,
+      // Ask for the board's own semantics rather than walking the tree from
+      // the root: the root pipeline owner no longer holds the semantics
+      // tree, and this asserts the label is on the board itself.
+      final label = tester.getSemantics(boardFinder).label;
+      expect(label, contains('to move.'),
           reason: 'the board exposed no semantics label at all');
       // It should name pieces and squares, not just whose turn it is.
-      expect(board.first, contains('king'));
-      expect(board.first, matches(RegExp(r'[a-h][1-8]')));
+      expect(label, contains('king'));
+      expect(label, matches(RegExp(r'[a-h][1-8]')));
 
       handle.dispose();
     });

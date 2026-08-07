@@ -4,7 +4,7 @@ import 'package:chesspuzzle/data/player_db.dart';
 import 'package:chesspuzzle/data/prefs.dart';
 import 'package:chesspuzzle/data/providers.dart';
 import 'package:chesspuzzle/data/puzzle_db.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 // path_provider_platform_interface is a transitive dependency of
 // path_provider. We take it on directly here (and only here) to redirect

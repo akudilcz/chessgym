@@ -107,17 +107,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final current = p.getInt(Prefs.kAutoAdvanceMs, defaultValue: Prefs.kAutoAdvanceDefaultMs);
     final choice = await showDialog<int>(
       context: context,
-      builder: (_) => SimpleDialog(
-        title: const Text('Auto-advance'),
-        children: [
-          for (final ms in [0, 3000, 6000, 10000, 15000, 30000])
-            RadioListTile<int>(
-              title: Text(_autoAdvanceLabel(ms)),
-              value: ms,
-              groupValue: current,
-              onChanged: (v) => Navigator.pop(context, v),
-            ),
-        ],
+      // Selection state lives on the RadioGroup ancestor now; the tiles
+      // carry only their own value.
+      builder: (_) => RadioGroup<int>(
+        groupValue: current,
+        onChanged: (v) => Navigator.pop(context, v),
+        child: SimpleDialog(
+          title: const Text('Auto-advance'),
+          children: [
+            for (final ms in [0, 3000, 6000, 10000, 15000, 30000])
+              RadioListTile<int>(
+                title: Text(_autoAdvanceLabel(ms)),
+                value: ms,
+              ),
+          ],
+        ),
       ),
     );
     if (choice != null) {

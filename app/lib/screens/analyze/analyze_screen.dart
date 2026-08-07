@@ -159,7 +159,7 @@ class _AnalyzeScreenState extends ConsumerState<AnalyzeScreen> {
                         label: Text(byId[themes[i]] ?? themes[i]),
                         visualDensity: VisualDensity.compact,
                       ),
-                      separatorBuilder: (_, __) =>
+                      separatorBuilder: (_, _) =>
                           const SizedBox(width: 4),
                       itemCount: themes.length,
                     );
@@ -177,12 +177,12 @@ class _AnalyzeScreenState extends ConsumerState<AnalyzeScreen> {
                     ),
                   ),
                 Center(
-                  child: cg.Chessboard.fixed(
+                  child: cg.StaticChessboard(
                     size: boardSize,
                     orientation: orientation,
                     fen: pos.fen,
                     lastMove: _currentMove(),
-                    settings: cg.ChessboardSettings(
+                    settings: cg.StaticChessboardSettings(
                       animationDuration:
                           MediaQuery.of(context).disableAnimations
                               ? Duration.zero
@@ -251,7 +251,7 @@ class _MoveStrip extends StatelessWidget {
             onPressed: () => onJump(i + 1),
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 4),
+        separatorBuilder: (_, _) => const SizedBox(width: 4),
         itemCount: moves.length,
       ),
     );

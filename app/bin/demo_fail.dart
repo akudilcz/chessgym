@@ -1,6 +1,10 @@
 // Second demo: intentionally play a wrong first move and watch
 // PuzzleController → state=failed → FSRS schedule the review.
 
+// This is a terminal harness, not shipped app code: stdout is its
+// entire user interface, so print is the right call here.
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
