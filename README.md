@@ -10,7 +10,7 @@ It is built for chess players who want focused, distraction-free training: every
 
 Chess Gym is not on any app store — you install the APK directly.
 
-**[⬇ Download the latest APK](https://github.com/akudilcz/chessgym/releases/latest/download/chessgym.apk)** (Android 8.0 / API 26 or newer, ~60 MB)
+**[⬇ Download the latest APK](https://github.com/akudilcz/chessgym/releases/latest/download/chessgym.apk)** (Android 8.0 / API 26 or newer, ~110 MB — most of it is the offline puzzle database)
 
 1. Open that link **on your phone** (or scan it from the [releases page](https://github.com/akudilcz/chessgym/releases/latest)) and let the download finish.
 2. Tap the downloaded `chessgym.apk` — from the notification, or in **Files → Downloads**.
