@@ -168,6 +168,31 @@ void main() {
       expect(find.text('SETTINGS'), findsOneWidget);
     });
 
+    testWidgets('Settings reports the build and that motion is suppressed',
+        (tester) async {
+      await pumpApp(tester, harness: h, home: const SettingsScreen());
+      await pumpUntil(tester, find.text('INSTALLED BUILD'));
+
+      // The whole test suite runs with animations disabled, which is
+      // exactly the state this warning exists to expose.
+      expect(find.textContaining('MOTION OFF'), findsOneWidget);
+      expect(find.textContaining('battery saver'), findsOneWidget);
+    });
+
+    testWidgets('Settings reports motion on when animations are enabled',
+        (tester) async {
+      await pumpApp(
+        tester,
+        harness: h,
+        home: const SettingsScreen(),
+        reduceMotion: false,
+      );
+      await pumpUntil(tester, find.text('INSTALLED BUILD'));
+
+      expect(find.text('MOTION ON'), findsOneWidget);
+      expect(find.textContaining('battery saver'), findsNothing);
+    });
+
     testWidgets('tapping the rating opens its explainer and closes again',
         (tester) async {
       await openDashboard(tester);

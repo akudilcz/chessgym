@@ -32,6 +32,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final p = _prefs;
+    // Every visual flourish stands down when the system asks for reduced
+    // motion, but sound does not — so the app can look completely static
+    // while still sounding right. That is impossible to diagnose from the
+    // outside, hence surfacing the flag here.
+    final reduced = MediaQuery.of(context).disableAnimations;
     return Scaffold(
       appBar: AppBar(title: const Text('SETTINGS')),
       body: p == null
@@ -80,6 +85,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 letterSpacing: 1.2,
                               ),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              reduced
+                                  ? 'MOTION OFF — system reduce-animations is on'
+                                  : 'MOTION ON',
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: reduced ? WR.amber : WR.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            if (reduced)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4),
+                                child: Text(
+                                  'Animations are disabled by Android, not by '
+                                  'this app. Check battery saver, Accessibility '
+                                  '> Remove animations, or Developer options > '
+                                  'animation scale.',
+                                  style: TextStyle(
+                                    color: WR.muted,
+                                    fontSize: 11,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
