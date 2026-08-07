@@ -6,6 +6,21 @@ Chess Gym is a Flutter chess puzzle app paired with a Python build-time curation
 
 It is built for chess players who want focused, distraction-free training: every puzzle is solved on-device, all player state lives in a local SQLite database, and there is no network client, login, or analytics SDK anywhere in the app.
 
+## Install on Android
+
+Chess Gym is not on any app store — you install the APK directly.
+
+**[⬇ Download the latest APK](https://github.com/akudilcz/chessgym/releases/latest/download/chessgym.apk)** (Android 8.0 / API 26 or newer, ~60 MB)
+
+1. Open that link **on your phone** (or scan it from the [releases page](https://github.com/akudilcz/chessgym/releases/latest)) and let the download finish.
+2. Tap the downloaded `chessgym.apk` — from the notification, or in **Files → Downloads**.
+3. Android will say installs from this source are blocked. Tap **Settings**, enable **Allow from this source** for your browser (or Files app), then press back and tap **Install** again. You only do this once.
+4. Play Protect may warn that the app is unknown, because it is signed with the project's own key rather than a store key. Choose **Install anyway**.
+
+To update, download the APK again and install it over the top — your rating, history, and review queue are kept. The app never talks to the network, so it will never update itself; check the releases page when you want a newer build.
+
+Every push to `main` publishes a fresh signed APK to that same link (see `.github/workflows/android-release.yml`), so the download URL never changes.
+
 ## Features
 
 - War-room HUD home screen: Glicko-2 rating with confidence interval (`1233 ±164`), tier label, level/XP, accuracy, solved and missed counters.
@@ -62,9 +77,15 @@ flutter run -d linux
 # Android — requires an emulator or connected device
 flutter run -d android
 
-# Signed release App Bundle (Play Store artifact)
+# Signed release APK (sideload artifact) and App Bundle (Play Store artifact)
+flutter build apk --release
 flutter build appbundle --release
 ```
+
+Release builds are signed with the keystore described by `app/android/key.properties`
+(`storePassword`, `keyPassword`, `keyAlias`, `storeFile`). That file and the keystore are
+gitignored; without them the build falls back to Flutter's debug key. In CI the keystore is
+supplied by the `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` repository secrets.
 
 Web is not supported (dartchess uses 64-bit integer literals that Flutter's JS/WASM targets cannot compile).
 
@@ -114,6 +135,7 @@ cd pipeline
 - `pipeline/` — Python curation pipeline. `run_stream.py` (recommended) and `run.py` orchestrate the `stages/` (`load`, `themes`, `score`, `filter_and_bucket`, `validate`, `emit`). Includes `themes.yaml` taxonomy, `famous_positions.json`, `fetch_inputs.py`, `mock_lichess.py`, and a `tests/` pytest suite.
 - `specs/` — user-facing feature specifications (puzzle experience, dashboard, progression, scoring, data model, offline/privacy, accessibility).
 - `design/` — architecture docs (SQLite schema, pipeline, app runtime, scoring formula, Glicko-2, FSRS).
+- `.github/workflows/android-release.yml` — GitHub Actions job that builds and signs the release APK on every push to `main` (and on `v*` tags) and publishes it to GitHub Releases.
 - `PRIVACY.md`, `LICENSE`, `NOTICE` — privacy policy, GPL-3.0 license text, and third-party attribution.
 
 ## License
