@@ -15,6 +15,7 @@ import '../../theme/app_theme.dart';
 
 import '../../data/providers.dart';
 import '../../data/puzzle_controller.dart';
+import '../../data/sfx.dart';
 import '../../domain/puzzle.dart';
 import '../../widgets/fast_fade_route.dart';
 import '../post_puzzle/post_puzzle_screen.dart';
@@ -60,6 +61,10 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   /// position change has to be pushed with [_syncBoard] — a plain setState
   /// no longer moves the pieces.
   cg.ChessboardController? _board;
+
+  /// Sound effects. Null until the service resolves; every call site
+  /// tolerates that, so a slow first frame is silent rather than broken.
+  SfxService? _sfx;
 
   /// Wall clock when the player was first given control of the puzzle.
   /// Used to record solve duration for per-puzzle stats. Excluded from
@@ -166,6 +171,15 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
   }
 
   Future<void> _load() async {
+    // Fire-and-forget: the board must not wait on the audio pool.
+    unawaited(() async {
+      try {
+        final sfx = await ref.read(sfxProvider.future);
+        if (mounted) _sfx = sfx;
+      } catch (e) {
+        debugPrint('[solve] sfx unavailable: $e');
+      }
+    }());
     Puzzle? p;
     try {
       if (widget.specificPuzzleId != null) {
@@ -380,6 +394,24 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
 
   cg.ValidMoves _validMovesOf(Position pos) => makeLegalMoves(pos);
 
+  /// Picks the sound a move deserves: check beats capture beats a plain
+  /// move, which is the order a player notices them in.
+  void _playMoveSound(Position before, Position after, Move move) {
+    final sfx = _sfx;
+    if (sfx == null) return;
+    if (after.isCheck) {
+      sfx.play(Sfx.check);
+      return;
+    }
+    final captured = move is NormalMove &&
+        (before.board.pieceAt(move.to) != null ||
+            // En passant takes a pawn that isn't on the destination square.
+            (before.board.pieceAt(move.from)?.role == Role.pawn &&
+                move.from.file != move.to.file &&
+                before.board.pieceAt(move.to) == null));
+    sfx.play(captured ? Sfx.capture : Sfx.move);
+  }
+
   /// The board resolves promotions itself now: it shows the piece selector
   /// and only calls back once, with [move.promotion] already set.
   void _onMove(Move move, {bool? viaDragAndDrop}) {
@@ -391,6 +423,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     if (_busy || _ctrl == null) return;
     _busy = true;
     final generation = _generation;
+    final before = _ctrl!.position;
     final outcome = _ctrl!.tryMove(uci);
     if (!_stillCurrent(generation)) {
       if (mounted) _busy = false;
@@ -398,6 +431,10 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
     }
     setState(() {});
     _syncBoard();
+    final played = _ctrl!.lastMove;
+    if (played != null) {
+      _playMoveSound(before, _ctrl!.position, played);
+    }
 
     if (_ctrl!.state == SolveState.failed) {
       // Wrong move: piece has already landed on its destination (see
@@ -405,6 +442,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       // to finish plus a beat so the player registers what they did,
       // THEN transition to the post-puzzle screen.
       _giveUpTimer?.cancel();
+      _sfx?.play(Sfx.fail);
       await _hapticTick(heavy: true);
       // Commit the miss BEFORE the animation beat, not after. Persisting it
       // behind the delay let a player dodge every failure — and the rating
@@ -428,10 +466,16 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
       // controller and cleared _busy. Resuming here would play the
       // solution's first move onto the reset board.
       if (!_stillCurrent(generation)) return;
+      final beforeReply = _ctrl!.position;
       _ctrl!.applyOpponentReply();
       setState(() {});
       _syncBoard();
+      final reply = _ctrl!.lastMove;
+      if (reply != null) {
+        _playMoveSound(beforeReply, _ctrl!.position, reply);
+      }
       if (_ctrl!.state == SolveState.succeeded) {
+        _sfx?.play(Sfx.solve);
         await _finish(
           solved: true,
           settle: _animDuration + const Duration(milliseconds: 100),
@@ -448,6 +492,7 @@ class _SolveScreenState extends ConsumerState<SolveScreen> {
 
     // No opponent reply: puzzle complete on the player's move.
     if (_ctrl!.state == SolveState.succeeded) {
+      _sfx?.play(Sfx.solve);
       await _finish(
         solved: true,
         settle: _animDuration + const Duration(milliseconds: 100),

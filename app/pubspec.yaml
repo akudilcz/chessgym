@@ -19,6 +19,10 @@ dependencies:
   path: ^1.9.0
   flutter_riverpod: ^3.4.2
   crypto: ^3.0.3
+  # Short SFX only. It transitively depends on `http` (for playing remote
+  # URLs, a feature this app never touches) — the app itself makes no
+  # network calls. See PRIVACY.md.
+  audioplayers: ^6.8.1
   chesspuzzle_logic:
     path: ../app_logic
 
@@ -56,3 +60,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/puzzles/
+    - assets/sfx/

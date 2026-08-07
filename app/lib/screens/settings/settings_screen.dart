@@ -48,6 +48,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     setState(() {});
                   },
                 ),
+                SwitchListTile(
+                  title: const Text('Sound'),
+                  subtitle: const Text('Move, capture, check and outcome'),
+                  value: p.getBool(Prefs.kSoundOn, defaultValue: true),
+                  onChanged: (v) async {
+                    await p.setBool(Prefs.kSoundOn, v);
+                    setState(() {});
+                  },
+                ),
                 _Section(title: 'FLOW'),
                 ListTile(
                   title: const Text('Auto-advance after puzzle'),

@@ -68,6 +68,7 @@ class Prefs {
 
   // Known keys.
   static const kHapticsOn = 'haptics_on';
+  static const kSoundOn = 'sound_on';
   /// Auto-advance delay in milliseconds. 0 = never auto-advance.
   static const kAutoAdvanceMs = 'auto_advance_ms';
 

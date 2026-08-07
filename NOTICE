@@ -36,30 +36,30 @@ Lichess puzzle database
 LINKED LIBRARIES (shipped inside the application)
 ================================================================================
 
-dartchess 0.12.3 — GPL-3.0
+dartchess 0.13.1 — GPL-3.0
     https://pub.dev/packages/dartchess
     Lichess. Move generation, legality checking, FEN and PGN handling.
     Copyleft source of Chess Gym's own GPL-3.0 license.
 
-chessground 7.4.2 — GPL-3.0
+chessground 10.1.1 — GPL-3.0
     https://pub.dev/packages/chessground
     Lichess. Interactive board widget, animation and drag-to-move.
     Copyleft source of Chess Gym's own GPL-3.0 license.
 
-sqflite 2.4.1 — BSD 2-Clause
+sqflite 2.4.3 — BSD 2-Clause
     https://pub.dev/packages/sqflite
     Copyright (c) 2019, Alexandre Roux (Tekartik). SQLite plugin for Flutter.
 
-sqflite_common_ffi 2.3.4+4 — BSD 2-Clause
+sqflite_common_ffi 2.4.2 — BSD 2-Clause
     https://pub.dev/packages/sqflite_common_ffi
     Copyright (c) 2019, Alexandre Roux (Tekartik). SQLite via FFI on desktop.
 
 fast_immutable_collections 11.2.0 — BSD 2-Clause
     https://pub.dev/packages/fast_immutable_collections
     Copyright 2020 Marcelo Glasberg and Philippe Fanaro.
-    Immutable IMap / ISet, required by chessground.
+    Immutable IMap / ISet.
 
-flutter_riverpod 2.6.1 — MIT
+flutter_riverpod 3.4.2 — MIT
     https://pub.dev/packages/flutter_riverpod
     Copyright (c) 2020 Remi Rousselet. State management.
 
@@ -70,6 +70,12 @@ path_provider 2.1.6 — BSD 3-Clause
 path 1.9.1 — BSD 3-Clause
     https://pub.dev/packages/path
     Copyright 2014, the Dart project authors. Path manipulation.
+
+audioplayers 6.8.1 — MIT
+    https://pub.dev/packages/audioplayers
+    Copyright (c) 2018 Luan Nico. Plays the app's sound effects. It declares
+    a transitive dependency on `http` for streaming remote audio; Chess Gym
+    only ever plays bundled assets and makes no network requests.
 
 crypto 3.0.7 — BSD 3-Clause
     https://pub.dev/packages/crypto
@@ -92,6 +98,10 @@ Cburnett chess piece set — CC-BY-SA 3.0
     Colin M.L. Burnett. Default piece set, supplied via chessground.
 
     CC-BY-SA 3.0 requires attribution and share-alike on the piece images.
+
+Sound effects (assets/sfx/*.wav) — GPL-3.0, part of this work
+    Synthesised, not sampled: no recordings or third-party audio are used.
+    Regenerate deterministically with `python3 app/tool/gen_sfx.py`.
 
 
 ================================================================================

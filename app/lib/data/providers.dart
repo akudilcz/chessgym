@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chesspuzzle_logic/chesspuzzle_logic.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,9 +9,20 @@ import 'prefs.dart';
 import 'progress_service.dart';
 import 'puzzle_db.dart';
 import 'selection_service.dart';
+import 'sfx.dart';
 
 final prefsProvider = FutureProvider<Prefs>((ref) async {
   return Prefs.instance();
+});
+
+final sfxProvider = FutureProvider<SfxService>((ref) async {
+  final prefs = await ref.watch(prefsProvider.future);
+  final sfx = SfxService(prefs);
+  ref.onDispose(sfx.dispose);
+  // Decode up front so the first move of the first puzzle isn't silent
+  // while the pool warms up.
+  unawaited(sfx.preload());
+  return sfx;
 });
 
 final puzzleDbProvider = FutureProvider<PuzzleDb>((ref) async {

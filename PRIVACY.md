@@ -41,6 +41,8 @@ At runtime, the app makes no network requests. Puzzles are bundled with the app 
 
 Optional puzzle-database updates ship with new app versions through the App Store or Google Play — there is no in-app download mechanism.
 
+The audio library that plays the app's sound effects (`audioplayers`) is capable of streaming audio from a URL, and so declares an HTTP dependency. Chess Gym only ever plays sound files bundled inside the app and never asks it to fetch anything.
+
 ## Children
 
 Chess Gym is suitable for all ages. Because we collect no personal data, the Children's Online Privacy Protection Act (COPPA) and GDPR-K impose no substantive requirements on the app beyond this policy.
