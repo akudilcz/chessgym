@@ -58,14 +58,8 @@ class _BoardFxState extends State<BoardFx> with TickerProviderStateMixin {
   static const _burstDuration = Duration(milliseconds: 750);
   static const _shakeDuration = Duration(milliseconds: 420);
 
-  late final AnimationController _burst = AnimationController(
-    vsync: this,
-    duration: _burstDuration,
-  );
-  late final AnimationController _shake = AnimationController(
-    vsync: this,
-    duration: _shakeDuration,
-  );
+  late final AnimationController _burst;
+  late final AnimationController _shake;
 
   List<_Particle> _particles = const [];
   Offset _focus = const Offset(0.5, 0.5);
@@ -74,6 +68,10 @@ class _BoardFxState extends State<BoardFx> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // Eager, not lazy: a `late` controller first touched in dispose() would
+    // build a ticker on a deactivated element.
+    _burst = AnimationController(vsync: this, duration: _burstDuration);
+    _shake = AnimationController(vsync: this, duration: _shakeDuration);
     widget.controller.addListener(_onFire);
   }
 

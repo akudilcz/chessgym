@@ -28,7 +28,6 @@ class TierBar extends StatelessWidget {
 
     return LayoutBuilder(builder: (ctx, cons) {
       final width = cons.maxWidth;
-      final markerX = (rating - rangeMin) / span * width;
 
       // Compute per-tier segment widths in pixels.
       final segWidths = <double>[];
@@ -43,39 +42,52 @@ class TierBar extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Marker + rating number above the bar.
+          // Marker + rating number above the bar. The marker slides to its
+          // new spot rather than jumping, so a rating change after a solve
+          // reads as movement along the ladder.
           SizedBox(
             height: 16,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  // clamp() throws when its upper bound is below its lower
-                  // one, so a bar narrower than the 48px label crashes
-                  // layout outright. Reachable by resizing the desktop
-                  // window; math.max keeps the range valid.
-                  left: (markerX - 24)
-                      .clamp(0.0, math.max(0.0, width - 48)),
-                  top: 0,
-                  child: SizedBox(
-                    width: 48,
-                    child: Text(
-                      '$displayedRating',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: rating.toDouble()),
+              duration: MediaQuery.of(ctx).disableAnimations
+                  ? Duration.zero
+                  : const Duration(milliseconds: 700),
+              curve: Curves.easeOutCubic,
+              builder: (ctx, animatedRating, _) {
+                final markerX = (animatedRating - rangeMin) / span * width;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      // clamp() throws when its upper bound is below its
+                      // lower one, so a bar narrower than the 48px label
+                      // crashes layout outright. Reachable by resizing the
+                      // desktop window; math.max keeps the range valid.
+                      left: (markerX - 24)
+                          .clamp(0.0, math.max(0.0, width - 48)),
+                      top: 0,
+                      child: SizedBox(
+                        width: 48,
+                        child: Text(
+                          '${animatedRating.round()}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                Positioned(
-                  left: (markerX - 6).clamp(-6, width - 6),
-                  bottom: -2,
-                  child: const Icon(Icons.arrow_drop_down, size: 16),
-                ),
-              ],
+                    Positioned(
+                      left: (markerX - 6).clamp(-6, width - 6),
+                      bottom: -2,
+                      child: const Icon(Icons.arrow_drop_down, size: 16),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           // The rainbow bar.

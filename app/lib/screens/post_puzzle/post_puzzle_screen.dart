@@ -8,7 +8,9 @@ import '../../data/prefs.dart';
 import '../../data/providers.dart';
 import '../../domain/puzzle.dart';
 import '../../domain/rating_tier.dart';
+import '../../data/sfx.dart';
 import '../../widgets/fast_fade_route.dart';
+import '../../widgets/result_badge.dart';
 import '../analyze/analyze_screen.dart';
 import '../solve/solve_screen.dart';
 
@@ -54,6 +56,18 @@ class _PostPuzzleScreenState extends ConsumerState<PostPuzzleScreen> {
   void dispose() {
     _autoAdvanceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Fanfare for a tier promotion. Best-effort, like every other sound.
+  void _playLevelUp() {
+    unawaited(() async {
+      try {
+        final sfx = await ref.read(sfxProvider.future);
+        sfx.play(Sfx.levelup);
+      } catch (_) {
+        // No audio here — the banner still shows.
+      }
+    }());
   }
 
   Future<void> _setupAutoAdvance() async {
@@ -132,12 +146,9 @@ class _PostPuzzleScreenState extends ConsumerState<PostPuzzleScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Center(
-                        child: Icon(
-                          solved
-                              ? Icons.check_circle_outline
-                              : Icons.cancel_outlined,
+                        child: ResultBadge(
+                          solved: solved,
                           color: resultColor,
-                          size: 72,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -151,6 +162,16 @@ class _PostPuzzleScreenState extends ConsumerState<PostPuzzleScreen> {
                           ),
                           orElse: () => const SizedBox(height: 48),
                         ),
+                      ),
+                      // Crossing into a new tier is the rarest good news
+                      // this screen has; it gets its own moment.
+                      ratingAsync.maybeWhen(
+                        data: (g) => _TierUpBanner(
+                          ending: g.rating - 300,
+                          delta: ratingDelta,
+                          onCelebrate: _playLevelUp,
+                        ),
+                        orElse: () => const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 18),
                       if (puzzle.originLabel != null)
@@ -427,6 +448,113 @@ class _AutoAdvanceBarState extends State<_AutoAdvanceBar>
           ),
         );
       },
+    );
+  }
+}
+
+/// Announces crossing into a new rating tier, and stays out of the way
+/// entirely otherwise.
+///
+/// The banner arrives after the rating counter has finished tweening, so
+/// the player watches the number climb into the tier rather than being told
+/// about it first.
+class _TierUpBanner extends StatefulWidget {
+  const _TierUpBanner({
+    required this.ending,
+    required this.delta,
+    required this.onCelebrate,
+  });
+
+  final double ending;
+  final double delta;
+  final VoidCallback onCelebrate;
+
+  @override
+  State<_TierUpBanner> createState() => _TierUpBannerState();
+}
+
+class _TierUpBannerState extends State<_TierUpBanner>
+    with SingleTickerProviderStateMixin {
+  late final bool _promoted;
+  late final AnimationController _ctrl;
+  Timer? _delay;
+
+  bool _isPromotion() {
+    if (widget.delta <= 0) return false;
+    final before = tierFor(widget.ending - widget.delta);
+    final after = tierFor(widget.ending);
+    return after.index > before.index;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Both are created unconditionally: a lazy `late` controller that no
+    // build ever touches would be constructed for the first time inside
+    // dispose(), on a deactivated element.
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _promoted = _isPromotion();
+    if (!_promoted) return;
+    widget.onCelebrate();
+    _delay = Timer(const Duration(milliseconds: 480), () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _delay?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_promoted) return const SizedBox.shrink();
+    final tier = tierFor(widget.ending);
+    final banner = Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+      decoration: BoxDecoration(
+        border: Border.all(color: tier.color, width: 1.5),
+        borderRadius: BorderRadius.circular(4),
+        color: tier.color.withValues(alpha: 0.10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(tier.icon, size: 18, color: tier.color),
+          const SizedBox(width: 8),
+          Text(
+            'PROMOTED TO ${tier.label.toUpperCase()}',
+            style: TextStyle(
+              color: tier.color,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (MediaQuery.of(context).disableAnimations) return banner;
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        final t = Curves.easeOutBack.transform(_ctrl.value);
+        return Opacity(
+          opacity: _ctrl.value.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, 14 * (1 - t)),
+            child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
+          ),
+        );
+      },
+      child: banner,
     );
   }
 }
