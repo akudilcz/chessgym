@@ -38,6 +38,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ? const Center(child: CircularProgressIndicator(color: WR.cyan))
           : ListView(
               children: [
+                // Which APK is actually installed — first thing on the
+                // page, because "is this the build I just downloaded?" is
+                // otherwise unanswerable from inside the app.
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: WR.panelElev,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: WR.divider),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.memory_outlined,
+                          size: 18, color: WR.cyan),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'INSTALLED BUILD',
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: WR.muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.6,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'v${AppInfo.fullVersion}',
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                color: WR.cyan,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 _Section(title: 'FEEDBACK'),
                 SwitchListTile(
                   title: const Text('Haptics'),

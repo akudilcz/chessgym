@@ -55,7 +55,7 @@ class _AboutBody extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               const Text(
-                'VERSION ${AppInfo.version}',
+                'VERSION ${AppInfo.fullVersion}',
                 style: TextStyle(
                   fontFamily: 'monospace',
                   color: WR.muted,

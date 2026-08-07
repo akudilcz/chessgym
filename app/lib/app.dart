@@ -6,6 +6,7 @@ import 'data/providers.dart';
 import 'screens/map/map_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'theme/app_theme.dart';
+import 'widgets/version_flash.dart';
 
 class ChesspuzzleApp extends ConsumerWidget {
   const ChesspuzzleApp({super.key});
@@ -17,7 +18,9 @@ class ChesspuzzleApp extends ConsumerWidget {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.system,
-      home: const _Root(),
+      // Wraps the whole app, not a single screen, so the badge is
+      // visible whichever screen the launch lands on.
+      home: const VersionFlash(child: _Root()),
       debugShowCheckedModeBanner: false,
     );
   }
